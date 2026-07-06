@@ -1,0 +1,89 @@
+name: Release
+
+# Triggered by pushing a semver tag, e.g.:
+#   git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.strip.outputs.version }}
+    steps:
+      - id: strip
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp version into Info.plist
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          plutil -replace CFBundleShortVersionString -string "$VERSION" macos/Support/Info.plist
+          plutil -replace CFBundleVersion -string "${{ github.run_number }}" macos/Support/Info.plist
+
+      - name: Build OpenHaze.app
+        working-directory: macos
+        run: ./build.sh
+
+      - name: Package .dmg
+        working-directory: macos
+        run: |
+          mkdir -p dist
+          cp -R build/OpenHaze.app dist/OpenHaze.app
+          ln -s /Applications dist/Applications
+          hdiutil create -volname "OpenHaze" -srcfolder dist -ov -format UDZO \
+            "OpenHaze-${{ needs.version.outputs.version }}-macOS.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: macos/OpenHaze-*.dmg
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build OpenHaze.exe
+        working-directory: windows
+        shell: cmd
+        run: call build.bat --no-launch
+        env:
+          OPENHAZE_VERSION: ${{ needs.version.outputs.version }}
+
+      - name: Rename with version
+        working-directory: windows
+        shell: pwsh
+        run: Copy-Item OpenHaze.exe "OpenHaze-${{ needs.version.outputs.version }}-Windows.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: windows/OpenHaze-*.exe
+
+  publish:
+    needs: [version, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OpenHaze ${{ github.ref_name }}
+          generate_release_notes: true
+          files: artifacts/*

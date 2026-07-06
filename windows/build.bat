@@ -29,6 +29,8 @@ if errorlevel 1 (
 
 echo.
 echo Built OpenHaze.exe successfully.
+
+if "%~1"=="--no-launch" exit /b 0
 choice /c YN /m "Launch OpenHaze now"
 if errorlevel 2 exit /b 0
 start "" "%~dp0OpenHaze.exe"
