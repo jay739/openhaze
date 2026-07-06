@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="OpenHaze Terminology">
+    <suite name="OpenHaze Suite" code="OHaz" description="Control OpenHaze.">
+        <class name="application" code="capp" description="The OpenHaze application.">
+            <cocoa class="NSApplication"/>
+            <property name="enabled" code="OHen" type="boolean" access="rw"
+                      description="Whether background dimming is on.">
+                <cocoa key="enabled"/>
+            </property>
+            <property name="intensity" code="OHin" type="integer" access="rw"
+                      description="Dimming intensity from 0 to 100.">
+                <cocoa key="intensity"/>
+            </property>
+        </class>
+    </suite>
+</dictionary>

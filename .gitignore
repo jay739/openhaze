@@ -1,0 +1,7 @@
+.DS_Store
+# macOS build outputs
+macos/build/
+macos/.build/
+# Windows build outputs
+windows/OpenHaze.exe
+windows/*.pdb
