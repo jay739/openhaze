@@ -331,6 +331,17 @@ namespace OpenHaze
             Dictionary<IntPtr, int> zIndex;
             Snapshot(out candidates, out zIndex);
 
+            // A UAC consent prompt (or the lock screen / Ctrl+Alt+Del screen) has
+            // switched to the secure desktop. We can't draw on it, so the closest
+            // equivalent to "only that prompt stays lit" is to full-dim everything
+            // on ours, regardless of DesktopMode — previously this read as "desktop
+            // focused" and suppressed dimming entirely instead.
+            if (settings.Enabled && Native.IsSecureDesktopActive())
+            {
+                foreach (var state in monitors) Apply(Plan.FullDim(), state, zIndex);
+                return;
+            }
+
             IntPtr fg = Native.GetForegroundWindow();
             bool desktopFocused = false;
 
@@ -376,11 +387,18 @@ namespace OpenHaze
                 return settings.DesktopMode == 1 ? Plan.FullDim() : Plan.Hidden();
 
             string device = state.Screen.DeviceName;
-            string fgDevice = Screen.FromHandle(fg).DeviceName;
+            Screen fgScreen = Screen.FromHandle(fg);
+            string fgDevice = fgScreen.DeviceName;
             bool isFgMonitor = fgDevice == device;
             var onThis = candidates.Where(delegate(WinInfo w) { return w.Device == device; }).ToList();
 
-            if (settings.MonitorMode == 1)   // focus one monitor, dim the rest
+            // A fullscreen window (covering its whole monitor, taskbar included —
+            // not just maximized, which stops at the work area) is treated like
+            // "focus one monitor" regardless of MonitorMode: a movie or game on
+            // one screen should dim the others even in independent-focus mode.
+            bool fgIsFullscreen = IsFullscreenOnMonitor(fg, fgScreen);
+
+            if (settings.MonitorMode == 1 || fgIsFullscreen)   // focus one monitor, dim the rest
             {
                 if (!isFgMonitor) return Plan.FullDim();
                 return AnchorPlan(fg, onThis);
@@ -390,6 +408,19 @@ namespace OpenHaze
             if (isFgMonitor) return AnchorPlan(fg, onThis);
             if (onThis.Count > 0) return AnchorPlan(onThis[0].Hwnd, onThis);
             return Plan.Hidden();   // empty monitor: nothing to dim
+        }
+
+        /// True if hwnd's window rect covers screen's full bounds (taskbar
+        /// included). A plain maximized window stops at the work area, which
+        /// excludes the taskbar, so this only matches genuine fullscreen content
+        /// (borderless or exclusive) — the case the "Known limitations" section
+        /// of the README used to say never dimmed other monitors at all.
+        private static bool IsFullscreenOnMonitor(IntPtr hwnd, Screen screen)
+        {
+            Native.RECT r;
+            if (!Native.GetWindowRect(hwnd, out r)) return false;
+            Rectangle b = screen.Bounds;
+            return r.Left <= b.Left && r.Top <= b.Top && r.Right >= b.Right && r.Bottom >= b.Bottom;
         }
 
         private Plan AnchorPlan(IntPtr highlight, List<WinInfo> onThisMonitor)

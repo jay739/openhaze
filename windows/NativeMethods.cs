@@ -186,5 +186,32 @@ namespace OpenHaze
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool DestroyIcon(IntPtr hIcon);
+
+        // ---- Secure desktop detection (UAC consent prompt, lock screen, Ctrl+Alt+Del) ----
+        //
+        // A UAC prompt (and the lock screen) runs on a separate, isolated desktop
+        // station ("Winlogon") that a normal-integrity process cannot see into:
+        // GetForegroundWindow() on our own desktop returns NULL while it's active,
+        // which previously read as "the user's desktop/Explorer is focused" and
+        // suppressed dimming entirely. OpenInputDesktop fails with access denied
+        // whenever the desktop currently receiving input isn't our own, which is
+        // the standard way unprivileged code detects this switch.
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr OpenInputDesktop(uint dwFlags, [MarshalAs(UnmanagedType.Bool)] bool fInherit, uint dwDesiredAccess);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool CloseDesktop(IntPtr hDesktop);
+
+        public const uint DESKTOP_READOBJECTS = 0x0001;
+
+        public static bool IsSecureDesktopActive()
+        {
+            IntPtr h = OpenInputDesktop(0, false, DESKTOP_READOBJECTS);
+            if (h == IntPtr.Zero) return true;
+            CloseDesktop(h);
+            return false;
+        }
     }
 }

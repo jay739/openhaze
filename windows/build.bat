@@ -15,7 +15,7 @@ if not exist "%CSC%" (
 
 echo Compiling OpenHaze...
 "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ ^
-    /win32manifest:app.manifest ^
+    /win32manifest:app.manifest /win32icon:Support\AppIcon.ico ^
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
     /out:OpenHaze.exe ^
     NativeMethods.cs OpenHaze.cs SettingsForm.cs

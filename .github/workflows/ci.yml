@@ -23,3 +23,10 @@ jobs:
         run: |
           cd windows
           build.bat --no-launch
+      - name: Install Inno Setup
+        shell: cmd
+        run: choco install innosetup --no-progress -y
+      - name: Build installer (dry run, not published)
+        working-directory: windows
+        shell: cmd
+        run: "\"C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe\" /DOPENHAZE_VERSION=0.0.0-ci installer.iss"

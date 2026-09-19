@@ -59,18 +59,21 @@ jobs:
         working-directory: windows
         shell: cmd
         run: call build.bat --no-launch
-        env:
-          OPENHAZE_VERSION: ${{ needs.version.outputs.version }}
 
-      - name: Rename with version
+      - name: Install Inno Setup
+        shell: cmd
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
         working-directory: windows
-        shell: pwsh
-        run: Copy-Item OpenHaze.exe "OpenHaze-${{ needs.version.outputs.version }}-Windows.exe"
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DOPENHAZE_VERSION=${{ needs.version.outputs.version }} installer.iss
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-exe
-          path: windows/OpenHaze-*.exe
+          name: windows-installer
+          path: windows/dist/OpenHaze-*-Setup.exe
 
   publish:
     needs: [version, macos, windows]
