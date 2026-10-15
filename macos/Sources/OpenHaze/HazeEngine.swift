@@ -178,7 +178,8 @@ final class HazeEngine {
         // The focused window: exact answer via Accessibility when available,
         // otherwise the front app's topmost normal window from the window list.
         var focused: WindowInfo?
-        if let axID = tracker.focusedWindowID(), let w = normals.first(where: { $0.id == axID }) {
+        let axFocused = tracker.focusedWindow()
+        if let axID = axFocused?.id, let w = normals.first(where: { $0.id == axID }) {
             focused = w
         } else if let pid = frontPID {
             focused = normals.first { $0.pid == pid }
@@ -190,18 +191,13 @@ final class HazeEngine {
             focused = normals.first
         }
 
-        // Screens covered by a non-normal-layer fullscreen window of the front
-        // app (native fullscreen). Never dim those.
-        var fullscreenScreens = Set<CGDirectDisplayID>()
-        if let pid = frontPID {
-            for (id, state) in states {
-                let covering = snapshot.windows.contains {
-                    $0.pid == pid && $0.layer != 0 && !excluded.contains($0.id) &&
-                    $0.bounds.intersection(state.cgFrame).area >= state.cgFrame.area * 0.9
-                }
-                if covering { fullscreenScreens.insert(id) }
-            }
-        }
+        let fullscreenScreens = FullscreenDetection.screenIDs(
+            windows: snapshot.windows,
+            frontPID: frontPID,
+            focusedWindowID: axFocused?.id,
+            focusedWindowIsFullscreen: axFocused?.isFullscreen ?? false,
+            screens: states.mapValues { $0.cgFrame },
+            excluding: excluded)
 
         guard let focused else {
             // Desktop focused (or nothing we can see, e.g. a fullscreen space).

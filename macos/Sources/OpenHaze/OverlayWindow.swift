@@ -13,7 +13,9 @@ final class OverlayWindow: NSWindow {
         hasShadow = false
         ignoresMouseEvents = true
         level = .normal
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        // Fullscreen is intentionally undimmed, including when AX access is unavailable.
+        // An auxiliary overlay can otherwise follow the user into a fullscreen Space.
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         animationBehavior = .none
         isReleasedWhenClosed = false
         isExcludedFromWindowsMenu = true

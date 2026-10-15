@@ -118,8 +118,9 @@ final class FocusTracker {
         appElement = nil
     }
 
-    /// CGWindowID of the focused window of the front app, if Accessibility can tell us.
-    func focusedWindowID() -> CGWindowID? {
+    /// Read the window ID and native fullscreen state from the same AX window.
+    /// The ID can be unavailable while switching Spaces; fullscreen is still useful.
+    func focusedWindow() -> (id: CGWindowID?, isFullscreen: Bool)? {
         guard AXIsProcessTrusted() else { return nil }
         let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
         guard pid > 0 else { return nil }
@@ -129,9 +130,13 @@ final class FocusTracker {
               let value, CFGetTypeID(value) == AXUIElementGetTypeID()
         else { return nil }
         let windowEl = unsafeDowncast(value as AnyObject, to: AXUIElement.self)
+        var fullscreenValue: CFTypeRef?
+        let isFullscreen = AXUIElementCopyAttributeValue(windowEl, "AXFullScreen" as CFString,
+                                                         &fullscreenValue) == .success
+            && (fullscreenValue as? Bool == true)
         var windowID: CGWindowID = 0
-        guard _AXUIElementGetWindow(windowEl, &windowID) == .success, windowID != 0 else { return nil }
-        return windowID
+        let hasID = _AXUIElementGetWindow(windowEl, &windowID) == .success && windowID != 0
+        return (hasID ? windowID : nil, isFullscreen)
     }
 }
 
