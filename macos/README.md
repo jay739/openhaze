@@ -127,6 +127,7 @@ build.sh                  build + bundle + sign (+ --install --run)
 
 Run `bash macos/test.sh` to check fullscreen detection, display selection, and
 that the overlay cannot join a native fullscreen Space as an auxiliary window.
+Overlay lifecycle checks require a logged-in macOS graphical session.
 These checks do not replace a real window-server test.
 
 After building, check the following manually with Accessibility enabled:
@@ -134,7 +135,8 @@ After building, check the following manually with Accessibility enabled:
 1. A normal or maximized window stays bright and its background is dimmed.
 2. Enter native fullscreen with the green button: the fullscreen window stays bright.
 3. Exit fullscreen: background dimming resumes.
-4. Repeat the fullscreen transition and switch between desktop Spaces.
+4. Switch repeatedly between a dimmed desktop and a fullscreen app. Fullscreen
+   must appear bright immediately, without a dim-then-fade-out transition.
 
 ## Uninstall
 

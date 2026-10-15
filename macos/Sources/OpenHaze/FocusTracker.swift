@@ -15,6 +15,7 @@ func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePoin
 ///  - Without: the engine's poll timer picks up changes from the window list.
 final class FocusTracker {
     var onChange: (() -> Void)?
+    var onSpaceChange: (() -> Void)?
     var onFnChanged: ((Bool) -> Void)?
     private(set) var fnHeld = false
 
@@ -39,12 +40,16 @@ final class FocusTracker {
             NSWorkspace.didActivateApplicationNotification,
             NSWorkspace.didHideApplicationNotification,
             NSWorkspace.didUnhideApplicationNotification,
-            NSWorkspace.activeSpaceDidChangeNotification,
         ]
         for name in names {
             nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.frontMayHaveChanged()
             }
+        }
+        nc.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+                       object: nil, queue: .main) { [weak self] _ in
+            self?.onSpaceChange?()
+            self?.frontMayHaveChanged()
         }
         nc.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
                        object: nil, queue: .main) { [weak self] note in

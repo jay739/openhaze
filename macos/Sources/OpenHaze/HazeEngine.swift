@@ -4,6 +4,7 @@ import Combine
 /// What a given display's haze should be doing right now.
 enum ScreenPlan: Equatable {
     case hidden                 // no dimming on this display
+    case fullscreen             // remove haze immediately; never fade over fullscreen
     case fullDim                // dim everything on this display (inactive display / desktop mode)
     case below(CGWindowID)      // dim everything behind this window
 }
@@ -41,6 +42,18 @@ final class ScreenState {
         overlayA.orderOut(nil)
         overlayB.orderOut(nil)
     }
+
+    /// A Space switch must not carry the previous desktop's haze into fullscreen.
+    /// Invalidate both crossfade completions and remove both windows synchronously.
+    func suspendImmediately(plan newPlan: ScreenPlan = .hidden) {
+        transitionGeneration &+= 1
+        settledGeneration = transitionGeneration
+        plan = newPlan
+        for overlay in [overlayA, overlayB] {
+            overlay.alphaValue = 0
+            overlay.orderOut(nil)
+        }
+    }
 }
 
 /// Core engine: decides, for every display, which window stays bright and keeps
@@ -65,6 +78,12 @@ final class HazeEngine {
         rebuildScreens()
 
         tracker.onChange = { [weak self] in self?.scheduleRecompute() }
+        tracker.onSpaceChange = { [weak self] in
+            guard let self else { return }
+            // Clear stale overlays before the deferred focus/window-list refresh.
+            for state in self.states.values { state.suspendImmediately() }
+            self.scheduleRecompute()
+        }
         tracker.onFnChanged = { [weak self] _ in
             guard let self, self.settings.fnReveal else { return }
             self.fastTransition = true
@@ -203,7 +222,7 @@ final class HazeEngine {
             // Desktop focused (or nothing we can see, e.g. a fullscreen space).
             for (id, _) in states {
                 if fullscreenScreens.contains(id) {
-                    plans[id] = .hidden
+                    plans[id] = .fullscreen
                 } else {
                     plans[id] = settings.desktopMode == .dimAll ? .fullDim : .hidden
                 }
@@ -216,7 +235,7 @@ final class HazeEngine {
 
         for (id, state) in states {
             if fullscreenScreens.contains(id) {
-                plans[id] = .hidden
+                plans[id] = .fullscreen
                 continue
             }
             let onScreen = normals.filter { $0.isOn(cgScreenFrame: state.cgFrame) }
@@ -254,7 +273,11 @@ final class HazeEngine {
 
     // MARK: - Applying plans
 
-    private func apply(_ plan: ScreenPlan, to state: ScreenState, snapshot: WindowSnapshot, duration: TimeInterval) {
+    func apply(_ plan: ScreenPlan, to state: ScreenState, snapshot: WindowSnapshot, duration: TimeInterval) {
+        if plan == .fullscreen {
+            if state.plan != .fullscreen { state.suspendImmediately(plan: .fullscreen) }
+            return
+        }
         let intensity = CGFloat(settings.currentIntensity)
         let color = settings.currentColor
         for overlay in [state.overlayA, state.overlayB] where overlay.backgroundColor != color {
@@ -279,6 +302,8 @@ final class HazeEngine {
         let gen = state.transitionGeneration
 
         switch plan {
+        case .fullscreen:
+            break // handled synchronously above
         case .hidden:
             let outgoing = state.active
             animateAlpha(outgoing, to: 0, duration: duration) { [weak state] in

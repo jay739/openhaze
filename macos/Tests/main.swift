@@ -37,4 +37,50 @@ if overlay.collectionBehavior.contains(.fullScreenAuxiliary) {
     failures += 1; print("FAIL: overlay must not join native fullscreen as an auxiliary window")
 } else { print("PASS: overlay does not join native fullscreen as an auxiliary window") }
 overlay.orderOut(nil)
+
+func expect(_ name: String, _ condition: Bool) {
+    if condition { print("PASS: \(name)") }
+    else { failures += 1; print("FAIL: \(name)") }
+}
+if let screen = NSScreen.screens.first {
+    let state = ScreenState(screen: screen)
+    let engine = HazeEngine(settings: Settings.shared)
+    state.plan = .below(42)
+    state.transitionGeneration = 3
+    state.settledGeneration = 2
+    state.overlayA.alphaValue = 0.65
+    state.overlayB.alphaValue = 0.45
+    state.overlayA.orderFrontRegardless()
+    state.overlayB.orderFrontRegardless()
+    expect("crossfade fixture starts with both windows visible",
+           state.overlayA.isVisible && state.overlayB.isVisible)
+    engine.apply(.fullscreen, to: state, snapshot: WindowSnapshot(), duration: 5)
+    expect("fullscreen immediately clears both crossfade alpha values",
+           state.overlayA.alphaValue == 0 && state.overlayB.alphaValue == 0)
+    expect("fullscreen removes both overlay windows",
+           !state.overlayA.isVisible && !state.overlayB.isVisible)
+    expect("fullscreen invalidates pending crossfade generations",
+           state.transitionGeneration > 3 && state.settledGeneration == state.transitionGeneration)
+    expect("fullscreen uses its own immediate plan", state.plan == .fullscreen)
+    let generation = state.transitionGeneration
+    engine.apply(.fullscreen, to: state, snapshot: WindowSnapshot(), duration: 5)
+    expect("repeated fullscreen refresh does not restart transitions",
+           state.transitionGeneration == generation)
+    state.overlayA.alphaValue = 0.65
+    state.overlayB.alphaValue = 0.45
+    state.suspendImmediately()
+    expect("Space change immediately clears both overlays before focus refresh",
+           state.plan == .hidden && state.overlayA.alphaValue == 0 && state.overlayB.alphaValue == 0)
+    engine.apply(.fullDim, to: state, snapshot: WindowSnapshot(), duration: 2)
+    engine.apply(.fullscreen, to: state, snapshot: WindowSnapshot(), duration: 2)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+    expect("pending fade-in cannot reshow a fullscreen overlay",
+           !state.overlayA.isVisible && !state.overlayB.isVisible)
+    expect("pending fade-in cannot restore fullscreen haze opacity",
+           state.overlayA.alphaValue == 0 && state.overlayB.alphaValue == 0)
+    state.tearDown()
+} else {
+    failures += 1
+    print("FAIL: overlay-transition checks require a logged-in macOS graphical session")
+}
 exit(failures == 0 ? 0 : 1)
