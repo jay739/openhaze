@@ -42,6 +42,9 @@ func expect(_ name: String, _ condition: Bool) {
     if condition { print("PASS: \(name)") }
     else { failures += 1; print("FAIL: \(name)") }
 }
+expect("overlay is not shared across all Spaces", !overlay.collectionBehavior.contains(.canJoinAllSpaces))
+expect("overlay does not stay stationary over Space animations", !overlay.collectionBehavior.contains(.stationary))
+expect("overlay can move to the active desktop after planning", overlay.collectionBehavior.contains(.moveToActiveSpace))
 if let screen = NSScreen.screens.first {
     let state = ScreenState(screen: screen)
     let engine = HazeEngine(settings: Settings.shared)

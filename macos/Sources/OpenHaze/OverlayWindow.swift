@@ -13,9 +13,11 @@ final class OverlayWindow: NSWindow {
         hasShadow = false
         ignoresMouseEvents = true
         level = .normal
-        // Fullscreen is intentionally undimmed, including when AX access is unavailable.
-        // An auxiliary overlay can otherwise follow the user into a fullscreen Space.
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        // Keep haze on its desktop during Space animations instead of pinning it
+        // over every Space. Reordering below a normal window can move it to the
+        // active desktop; fullscreen plans never order it in. Transient windows
+        // are hidden by Mission Control rather than appearing as desktop tiles.
+        collectionBehavior = [.moveToActiveSpace, .transient, .ignoresCycle]
         animationBehavior = .none
         isReleasedWhenClosed = false
         isExcludedFromWindowsMenu = true
