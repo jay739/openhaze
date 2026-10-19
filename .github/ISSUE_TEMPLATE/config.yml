@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/jay739//discussions
+    about: Ask a question or float an idea before opening an issue.
+  - name: Security vulnerability
+    url: https://github.com/jay739//security/advisories/new
+    about: Report it privately, please do not open a public issue.
