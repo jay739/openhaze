@@ -12,7 +12,7 @@ no SDK needed).
 
 ## Running the checks
 
-Build both platforms if you can; CI builds macOS and Windows on every PR. There is no unit-test suite (the app is a thin shell over OS window APIs); manual checks are described in each platform README.
+Build both platforms if you can; CI builds macOS and Windows on every PR. Run the macOS fullscreen regression checks with `bash macos/test.sh`. Manual checks are described in each platform README.
 
 ## Ground rules
 

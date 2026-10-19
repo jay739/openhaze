@@ -15,6 +15,7 @@ func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePoin
 ///  - Without: the engine's poll timer picks up changes from the window list.
 final class FocusTracker {
     var onChange: (() -> Void)?
+    var onSpaceChange: (() -> Void)?
     var onFnChanged: ((Bool) -> Void)?
     private(set) var fnHeld = false
 
@@ -39,12 +40,16 @@ final class FocusTracker {
             NSWorkspace.didActivateApplicationNotification,
             NSWorkspace.didHideApplicationNotification,
             NSWorkspace.didUnhideApplicationNotification,
-            NSWorkspace.activeSpaceDidChangeNotification,
         ]
         for name in names {
             nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.frontMayHaveChanged()
             }
+        }
+        nc.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+                       object: nil, queue: .main) { [weak self] _ in
+            self?.onSpaceChange?()
+            self?.frontMayHaveChanged()
         }
         nc.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
                        object: nil, queue: .main) { [weak self] note in
@@ -118,8 +123,9 @@ final class FocusTracker {
         appElement = nil
     }
 
-    /// CGWindowID of the focused window of the front app, if Accessibility can tell us.
-    func focusedWindowID() -> CGWindowID? {
+    /// Read the window ID and native fullscreen state from the same AX window.
+    /// The ID can be unavailable while switching Spaces; fullscreen is still useful.
+    func focusedWindow() -> (id: CGWindowID?, isFullscreen: Bool)? {
         guard AXIsProcessTrusted() else { return nil }
         let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
         guard pid > 0 else { return nil }
@@ -129,9 +135,13 @@ final class FocusTracker {
               let value, CFGetTypeID(value) == AXUIElementGetTypeID()
         else { return nil }
         let windowEl = unsafeDowncast(value as AnyObject, to: AXUIElement.self)
+        var fullscreenValue: CFTypeRef?
+        let isFullscreen = AXUIElementCopyAttributeValue(windowEl, "AXFullScreen" as CFString,
+                                                         &fullscreenValue) == .success
+            && (fullscreenValue as? Bool == true)
         var windowID: CGWindowID = 0
-        guard _AXUIElementGetWindow(windowEl, &windowID) == .success, windowID != 0 else { return nil }
-        return windowID
+        let hasID = _AXUIElementGetWindow(windowEl, &windowID) == .success && windowID != 0
+        return (hasID ? windowID : nil, isFullscreen)
     }
 }
 
