@@ -1,5 +1,9 @@
 # OpenHaze
 
+<p align="center">
+  <img src="windows/Support/AppIcon-512.png" alt="OpenHaze icon" width="128" />
+</p>
+
 Dim background windows. Focus on the one that matters.
 
 OpenHaze highlights your active window by fading everything behind it into an adjustable haze, from a soft shade to a total blackout. It is an open-source recreation of the excellent [HazeOver](https://hazeover.com) for macOS, plus a native Windows sibling that HazeOver never had.
