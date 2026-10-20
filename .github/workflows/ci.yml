@@ -6,7 +6,49 @@ on:
   pull_request:
 
 jobs:
+  # Decide whether anything that can affect a build changed. Docs-only changes
+  # (Markdown, the docs/ Pages site, issue and discussion templates, LICENSE)
+  # skip the macOS and Windows builds. The builds are skipped through `if`
+  # rather than with paths-ignore on the workflow, because macos and windows
+  # are required checks: a skipped job counts as passing, but a workflow that
+  # never runs would leave a docs-only PR waiting on them forever.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # No usable base (a new branch, or history that cannot be found):
+          # build, to be safe.
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base" HEAD)
+          echo "Changed files:"
+          echo "$changed"
+          code_files=$(echo "$changed" | grep -vE '^(docs/|LICENSE$|.*\.md$|\.github/(ISSUE_TEMPLATE|DISCUSSION_TEMPLATE)/)' | grep -c . || true)
+          if [ "$code_files" -gt 0 ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only change: skipping the builds."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   macos:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,6 +57,8 @@ jobs:
           cd macos
           ./build.sh
   windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
