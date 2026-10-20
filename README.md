@@ -6,6 +6,10 @@
 
 Dim background windows. Focus on the one that matters.
 
+<p align="center">
+  <img src="docs/demo.webp" alt="OpenHaze on Windows: the window in focus stays bright while the other window fades into a haze, then the tray menu adjusts the intensity" width="800" />
+</p>
+
 OpenHaze highlights your active window by fading everything behind it into an adjustable haze, from a soft shade to a total blackout. It is an open-source recreation of the excellent [HazeOver](https://hazeover.com) for macOS, plus a native Windows sibling that HazeOver never had.
 
 Both implementations are small, dependency-free, and native:
