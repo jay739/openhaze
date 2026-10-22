@@ -38,7 +38,7 @@ build/dmgenv/bin/python -m pip install --quiet --disable-pip-version-check \
   dmgbuild==1.6.7 ds_store==1.3.3 mac_alias==2.2.3
 
 DMG="OpenHaze-$VERSION-macOS.dmg"
-echo "▸ Packaging $DMG…"
+echo "▸ Packaging ${DMG}…"
 rm -f "$DMG"
 build/dmgenv/bin/python -m dmgbuild -s dmg-settings.py "OpenHaze" "$DMG"
 
