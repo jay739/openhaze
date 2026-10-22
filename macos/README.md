@@ -40,6 +40,11 @@ That compiles with `swiftc` (plain Command Line Tools are enough — SwiftPM/Xco
 not required), assembles `build/OpenHaze.app`, ad-hoc signs it, copies it to
 `~/Applications`, and launches it.
 
+To package `build/OpenHaze.app` into the drag-to-install disk image, run
+`./package-dmg.sh 0.2.1` after `./build.sh` (it needs Python 3.10 or newer for
+dmgbuild). The version only names the file; releases stamp the app's own
+version from the tag.
+
 ## First run
 
 OpenHaze starts working immediately. It will offer to enable **Accessibility**
@@ -112,8 +117,9 @@ Sources/OpenHaze/
   HotkeyManager.swift     Carbon global hotkeys
   OnboardingWindow.swift  first-run / permission flow
   StateBox.swift          @State replacement (CLT lacks SwiftUI macros)
-Support/                  Info.plist, sdef, icon generator
+Support/                  Info.plist, sdef, icon and dmg background generators
 build.sh                  build + bundle + sign (+ --install --run)
+package-dmg.sh            drag-to-install .dmg, laid out by dmg-settings.py
 ```
 
 ## Known limitations

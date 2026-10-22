@@ -37,12 +37,7 @@ jobs:
 
       - name: Package .dmg
         working-directory: macos
-        run: |
-          mkdir -p dist
-          cp -R build/OpenHaze.app dist/OpenHaze.app
-          ln -s /Applications dist/Applications
-          hdiutil create -volname "OpenHaze" -srcfolder dist -ov -format UDZO \
-            "OpenHaze-${{ needs.version.outputs.version }}-macOS.dmg"
+        run: ./package-dmg.sh "${{ needs.version.outputs.version }}"
 
       - uses: actions/upload-artifact@v4
         with:

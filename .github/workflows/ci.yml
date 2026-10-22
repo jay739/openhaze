@@ -61,6 +61,9 @@ jobs:
         run: |
           cd macos
           ./build.sh
+      - name: Package .dmg (dry run, not published)
+        working-directory: macos
+        run: ./package-dmg.sh 0.0.0-ci
   windows:
     needs: changes
     if: needs.changes.outputs.code == 'true'

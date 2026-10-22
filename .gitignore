@@ -2,6 +2,7 @@
 # macOS build outputs
 macos/build/
 macos/.build/
+macos/*.dmg
 # Windows build outputs
 windows/OpenHaze.exe
 windows/*.pdb
