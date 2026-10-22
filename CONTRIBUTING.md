@@ -12,7 +12,7 @@ no SDK needed).
 
 ## Running the checks
 
-Build both platforms if you can; CI builds macOS and Windows on every PR. Run the macOS fullscreen regression checks with `bash macos/test.sh`. Manual checks are described in each platform README.
+Build both platforms if you can. On every PR that changes code, CI builds macOS and Windows and runs the macOS fullscreen regression checks; run those checks locally with `bash macos/test.sh`. Manual checks are described in each platform README.
 
 ## Ground rules
 

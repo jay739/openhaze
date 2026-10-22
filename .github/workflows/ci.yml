@@ -52,6 +52,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      # The regression checks compile their own binary, so they run first and
+      # fail fast. They need the logged-in GUI session that hosted macOS
+      # runners provide.
+      - name: Run fullscreen regression checks
+        run: bash macos/test.sh
       - name: Build with swiftc
         run: |
           cd macos
