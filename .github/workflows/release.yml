@@ -58,6 +58,8 @@ jobs:
       - name: Build OpenHaze.exe
         working-directory: windows
         shell: cmd
+        env:
+          OPENHAZE_VERSION: ${{ needs.version.outputs.version }}
         run: call build.bat --no-launch
 
       - name: Install Inno Setup
