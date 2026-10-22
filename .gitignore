@@ -5,3 +5,5 @@ macos/.build/
 # Windows build outputs
 windows/OpenHaze.exe
 windows/*.pdb
+windows/Version.g.cs
+windows/dist/

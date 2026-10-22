@@ -652,7 +652,7 @@ namespace OpenHaze
             about.Click += delegate
             {
                 MessageBox.Show(
-                    "OpenHaze for Windows 1.0\n\n" +
+                    "OpenHaze for Windows " + Application.ProductVersion + "\n\n" +
                     "Dims background windows so you can focus on the one that matters.\n\n" +
                     "A personal, open-source recreation of HazeOver (hazeover.com) —\n" +
                     "if you love the idea, support the original on the Mac.\n\n" +
