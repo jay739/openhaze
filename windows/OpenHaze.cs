@@ -1,4 +1,4 @@
-// OpenHaze for Windows — dims background windows so the active one stands out.
+// OpenHaze for Windows: dims background windows so the active one stands out.
 // Personal-use recreation of HazeOver (hazeover.com). C# 5 / .NET Framework 4.8 /
 // WinForms: builds with the csc.exe bundled in every Windows 10/11 install.
 using System;
@@ -51,6 +51,8 @@ namespace OpenHaze
         public uint ToggleMods; public uint ToggleVk;
         public uint IncMods; public uint IncVk;
         public uint DecMods; public uint DecVk;
+        public bool CheckForUpdates;    // ask GitHub once a day whether a newer release exists
+        public string UpdateNotifiedTag; // newest release the user was already told about
 
         public event Action Changed;
         public void NotifyChanged() { Save(); var h = Changed; if (h != null) h(); }
@@ -67,6 +69,8 @@ namespace OpenHaze
             ToggleMods = Native.MOD_CONTROL | Native.MOD_ALT; ToggleVk = (uint)Keys.H;
             IncMods = 0; IncVk = 0;
             DecMods = 0; DecVk = 0;
+            CheckForUpdates = true;
+            UpdateNotifiedTag = "";
         }
 
         private static string PathFor()
@@ -104,6 +108,8 @@ namespace OpenHaze
                             case "IncVk": s.IncVk = (uint)ParseI(v, 0); break;
                             case "DecMods": s.DecMods = (uint)ParseI(v, 0); break;
                             case "DecVk": s.DecVk = (uint)ParseI(v, 0); break;
+                            case "CheckForUpdates": s.CheckForUpdates = v == "1"; break;
+                            case "UpdateNotifiedTag": s.UpdateNotifiedTag = v; break;
                         }
                     }
                 }
@@ -128,6 +134,8 @@ namespace OpenHaze
                     "ToggleMods=" + ToggleMods, "ToggleVk=" + ToggleVk,
                     "IncMods=" + IncMods, "IncVk=" + IncVk,
                     "DecMods=" + DecMods, "DecVk=" + DecVk,
+                    "CheckForUpdates=" + (CheckForUpdates ? "1" : "0"),
+                    "UpdateNotifiedTag=" + UpdateNotifiedTag,
                 };
                 File.WriteAllLines(PathFor(), lines);
             }
@@ -334,7 +342,7 @@ namespace OpenHaze
             // A UAC consent prompt (or the lock screen / Ctrl+Alt+Del screen) has
             // switched to the secure desktop. We can't draw on it, so the closest
             // equivalent to "only that prompt stays lit" is to full-dim everything
-            // on ours, regardless of DesktopMode — previously this read as "desktop
+            // on ours, regardless of DesktopMode. Previously this read as "desktop
             // focused" and suppressed dimming entirely instead.
             if (settings.Enabled && Native.IsSecureDesktopActive())
             {
@@ -392,7 +400,7 @@ namespace OpenHaze
             bool isFgMonitor = fgDevice == device;
             var onThis = candidates.Where(delegate(WinInfo w) { return w.Device == device; }).ToList();
 
-            // A fullscreen window (covering its whole monitor, taskbar included —
+            // A fullscreen window (covering its whole monitor, taskbar included,
             // not just maximized, which stops at the work area) is treated like
             // "focus one monitor" regardless of MonitorMode: a movie or game on
             // one screen should dim the others even in independent-focus mode.
@@ -413,7 +421,7 @@ namespace OpenHaze
         /// True if hwnd's window rect covers screen's full bounds (taskbar
         /// included). A plain maximized window stops at the work area, which
         /// excludes the taskbar, so this only matches genuine fullscreen content
-        /// (borderless or exclusive) — the case the "Known limitations" section
+        /// (borderless or exclusive), the case the "Known limitations" section
         /// of the README used to say never dimmed other monitors at all.
         private static bool IsFullscreenOnMonitor(IntPtr hwnd, Screen screen)
         {
@@ -435,7 +443,7 @@ namespace OpenHaze
         }
 
         /// Snapshot the top-level z-order (top to bottom), filtered to windows a
-        /// user would consider "real" — the same set Alt-Tab roughly shows.
+        /// user would consider "real", roughly the same set Alt-Tab shows.
         private void Snapshot(out List<WinInfo> candidates, out Dictionary<IntPtr, int> zIndex)
         {
             candidates = new List<WinInfo>();
@@ -581,6 +589,14 @@ namespace OpenHaze
         private IntPtr mouseHook = IntPtr.Zero;
         private Native.LowLevelMouseProc mouseProc;   // kept referenced for GC
         private readonly SynchronizationContext ui;
+        private ToolStripMenuItem updateItem;
+        private ToolStripSeparator updateSeparator;
+        private readonly FormsTimer updateTimer;
+        private string updatePage;
+        private bool updateCheckRunning;
+
+        private const int FirstUpdateCheckMs = 10 * 1000;
+        private const int UpdateCheckIntervalMs = 24 * 60 * 60 * 1000;
 
         public TrayContext()
         {
@@ -592,11 +608,23 @@ namespace OpenHaze
             menu = BuildMenu();
             tray = new NotifyIcon();
             tray.Icon = TrayIconRenderer.Make(settings.Enabled);
-            tray.Text = "OpenHaze — double-click to toggle, scroll to adjust";
+            tray.Text = "OpenHaze: double-click to toggle, scroll to adjust";
             tray.ContextMenuStrip = menu;
             tray.Visible = true;
             tray.MouseUp += OnTrayMouseUp;
             tray.DoubleClick += delegate { ToggleEnabled(); };
+            tray.BalloonTipClicked += delegate { OpenUpdatePage(); };
+
+            // Ask GitHub for a newer release shortly after startup, then daily.
+            updateTimer = new FormsTimer();
+            updateTimer.Interval = FirstUpdateCheckMs;
+            updateTimer.Tick += delegate
+            {
+                updateTimer.Interval = UpdateCheckIntervalMs;
+                if (settings.CheckForUpdates && !UpdateChecker.IsDevelopmentBuild(Application.ProductVersion))
+                    CheckForUpdates(false);
+            };
+            updateTimer.Start();
 
             hotkeys = new HotkeyWindow(OnHotkey);
             ReRegisterHotkeys();
@@ -613,6 +641,16 @@ namespace OpenHaze
         private ContextMenuStrip BuildMenu()
         {
             var m = new ContextMenuStrip();
+
+            // Hidden until a check finds a newer release.
+            updateItem = new ToolStripMenuItem();
+            updateItem.Font = new Font(updateItem.Font, FontStyle.Bold);
+            updateItem.Visible = false;
+            updateItem.Click += delegate { OpenUpdatePage(); };
+            m.Items.Add(updateItem);
+            updateSeparator = new ToolStripSeparator();
+            updateSeparator.Visible = false;
+            m.Items.Add(updateSeparator);
 
             toggleItem = new ToolStripMenuItem("Dim background windows");
             toggleItem.Checked = settings.Enabled;
@@ -648,14 +686,18 @@ namespace OpenHaze
             settingsItem.Click += delegate { ShowSettings(); };
             m.Items.Add(settingsItem);
 
+            var checkItem = new ToolStripMenuItem("Check for updates…");
+            checkItem.Click += delegate { CheckForUpdates(true); };
+            m.Items.Add(checkItem);
+
             var about = new ToolStripMenuItem("About OpenHaze");
             about.Click += delegate
             {
                 MessageBox.Show(
                     "OpenHaze for Windows " + Application.ProductVersion + "\n\n" +
                     "Dims background windows so you can focus on the one that matters.\n\n" +
-                    "A personal, open-source recreation of HazeOver (hazeover.com) —\n" +
-                    "if you love the idea, support the original on the Mac.\n\n" +
+                    "A personal, open-source recreation of HazeOver (hazeover.com).\n" +
+                    "If you love the idea, support the original on the Mac.\n\n" +
                     "Tray: double-click toggles, scroll wheel adjusts intensity.",
                     "About OpenHaze", MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
@@ -711,6 +753,77 @@ namespace OpenHaze
                 settingsForm = new SettingsForm(settings, ReRegisterHotkeys);
             settingsForm.Show();
             settingsForm.Activate();
+        }
+
+        // ---- updates ----
+
+        private void CheckForUpdates(bool userAsked)
+        {
+            if (updateCheckRunning) return;
+            updateCheckRunning = true;
+            string current = Application.ProductVersion;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                ReleaseInfo latest = null;
+                UpdateCheckException failure = null;
+                try { latest = UpdateChecker.FetchLatest(current); }
+                catch (UpdateCheckException e) { failure = e; }
+                ui.Post(delegate { OnUpdateCheckFinished(current, latest, failure, userAsked); }, null);
+            });
+        }
+
+        private void OnUpdateCheckFinished(string current, ReleaseInfo latest, UpdateCheckException failure,
+                                           bool userAsked)
+        {
+            updateCheckRunning = false;
+            if (failure != null)
+            {
+                // Automatic checks fail quietly; the next one runs tomorrow.
+                if (userAsked)
+                    MessageBox.Show(failure.Message, "OpenHaze", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            bool newer = UpdateChecker.IsNewer(latest.Tag, current);
+            updateItem.Visible = newer;
+            updateSeparator.Visible = newer;
+            if (!newer)
+            {
+                if (userAsked)
+                    MessageBox.Show(string.Format("You're up to date. OpenHaze {0} is the newest version.", current),
+                        "OpenHaze", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            updatePage = latest.PageUrl;
+            updateItem.Text = string.Format("Update available: {0}…", latest.Tag);
+            if (userAsked)
+            {
+                var answer = MessageBox.Show(
+                    string.Format("OpenHaze {0} is available. You have {1}.\n\nOpen the download page?",
+                        latest.Tag, current),
+                    "OpenHaze", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                if (answer == DialogResult.Yes) OpenUpdatePage();
+            }
+            else if (settings.UpdateNotifiedTag != latest.Tag)
+            {
+                // Announce each release once; the menu item stays until the user updates.
+                settings.UpdateNotifiedTag = latest.Tag;
+                settings.Save();
+                tray.ShowBalloonTip(10000, string.Format("OpenHaze {0} is available", latest.Tag),
+                    "Click here, or use the tray menu, to open the download page.", ToolTipIcon.Info);
+            }
+        }
+
+        private void OpenUpdatePage()
+        {
+            string url = updatePage ?? UpdateChecker.ReleasesPage;
+            try { System.Diagnostics.Process.Start(url); }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                MessageBox.Show("Windows couldn't open your web browser. The download page is:\n\n" + url,
+                    "OpenHaze", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         // ---- hotkeys ----
@@ -776,6 +889,7 @@ namespace OpenHaze
         private void Cleanup()
         {
             if (mouseHook != IntPtr.Zero) { Native.UnhookWindowsHookEx(mouseHook); mouseHook = IntPtr.Zero; }
+            updateTimer.Stop();
             hotkeys.UnregisterAll();
             tray.Visible = false;
             tray.Dispose();

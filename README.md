@@ -29,6 +29,7 @@ Both implementations are small, dependency-free, and native:
 - Menu bar / tray slider, and scroll over the icon to adjust intensity
 - Global hotkeys (toggle, intensity up/down)
 - Custom haze color, desktop-click reveal, launch at login
+- New-version notice: once a day OpenHaze asks GitHub for the latest release and offers to open its download page. It never downloads or installs anything itself, and you can turn it off in Settings
 - macOS extras: Fn-to-reveal gesture, separate Light/Dark appearance settings, AppleScript + `openhaze://` URL scheme automation
 
 ## Install

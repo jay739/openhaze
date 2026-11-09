@@ -129,7 +129,13 @@ struct GeneralTab: View {
                     }
                 }
             } footer: {
-                Text("Without Accessibility access, focus changes are detected by polling — it still works, just a touch less instantly, and the Fn-reveal gesture is unavailable.")
+                Text("Without Accessibility access, focus changes are detected by polling. It still works, just a touch less instantly, and the Fn-reveal gesture is unavailable.")
+            }
+
+            Section {
+                Toggle("Check for updates automatically", isOn: $settings.checkForUpdates)
+            } footer: {
+                Text("Once a day, OpenHaze asks GitHub whether a newer release exists and tells you if there is one. It never downloads or installs anything by itself.")
             }
         }
         .formStyle(.grouped)
@@ -211,12 +217,12 @@ struct FocusTab: View {
                 }
                 .pickerStyle(.radioGroup)
             } footer: {
-                Text("“Active window” focuses on exactly one thing at a time. “Active app” keeps every window of the front application bright — handy for palettes and inspectors.")
+                Text("“Active window” focuses on exactly one thing at a time. “Active app” keeps every window of the front application bright, which is handy for palettes and inspectors.")
             }
 
             Section {
                 Picker("When the desktop gets focus", selection: $settings.desktopMode) {
-                    Text("Reveal — fade the haze out").tag(DesktopMode.reveal)
+                    Text("Reveal: fade the haze out").tag(DesktopMode.reveal)
                     Text("Dim all windows").tag(DesktopMode.dimAll)
                 }
                 .pickerStyle(.radioGroup)
@@ -244,7 +250,7 @@ struct DisplaysTab: View {
             Section {
                 Picker("Multiple displays", selection: $settings.displayMode) {
                     Text("Highlight the top window on every display").tag(DisplayMode.independent)
-                    Text("Focus on one display — dim the others entirely").tag(DisplayMode.single)
+                    Text("Focus on one display and dim the others entirely").tag(DisplayMode.single)
                 }
                 .pickerStyle(.radioGroup)
             } footer: {
@@ -356,8 +362,7 @@ struct CodeRow: View {
 
 struct AboutTab: View {
     private var version: String {
-        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        return "Version \(v)"
+        "Version \(UpdateChecker.currentVersion)"
     }
 
     var body: some View {
