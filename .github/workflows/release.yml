@@ -81,6 +81,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      # Lets people check a download with `sha256sum -c` (Linux), `shasum -a 256 -c`
+      # (macOS) or `Get-FileHash` (Windows). It is published with the assets.
+      - name: Write SHA256SUMS.txt
+        working-directory: artifacts
+        run: |
+          sha256sum OpenHaze-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
