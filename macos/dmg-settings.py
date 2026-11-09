@@ -9,7 +9,8 @@ application = "build/OpenHaze.app"
 format = "UDZO"
 files = [application]
 symlinks = {"Applications": "/Applications"}
-hide_extensions = ["OpenHaze.app"]
+# No hide_extensions: hiding ".app" stores a Finder flag on the bundle, and
+# `codesign --verify --strict` rejects that as extra metadata.
 icon = "Support/AppIcon.icns"
 
 # dmgbuild pairs this with dmg-background@2x.png for Retina displays.
