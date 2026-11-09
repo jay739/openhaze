@@ -42,4 +42,13 @@ echo "▸ Packaging ${DMG}…"
 rm -f "$DMG"
 build/dmgenv/bin/python -m dmgbuild -s dmg-settings.py "OpenHaze" "$DMG"
 
+# Check the app inside the finished image the way strict tools (Homebrew's
+# audit, for one) do, so packaging fails instead of shipping a signature they
+# reject. Extra Finder metadata on the bundle is enough to fail this.
+echo "▸ Verifying the app's signature inside the image…"
+MOUNT=$(mktemp -d)
+hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$MOUNT" "$DMG" >/dev/null
+trap 'hdiutil detach "$MOUNT" >/dev/null 2>&1; rmdir "$MOUNT"' EXIT
+codesign --verify --deep --strict "$MOUNT/OpenHaze.app"
+
 echo "✓ Done: $DMG"
