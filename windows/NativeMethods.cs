@@ -96,7 +96,7 @@ namespace OpenHaze
             return sb.ToString();
         }
 
-        // ---- WinEvent hook (foreground changes — instant, no permissions) ----
+        // ---- WinEvent hook (foreground changes: instant, no permissions) ----
 
         public delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType,
             IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
@@ -131,6 +131,11 @@ namespace OpenHaze
         public const uint MOD_SHIFT = 0x0004;
         public const uint MOD_WIN = 0x0008;
         public const int WM_HOTKEY = 0x0312;
+
+        // Sent to every top-level window at logoff, and by Restart Manager when
+        // an installer needs a running OpenHaze to close.
+        public const int WM_QUERYENDSESSION = 0x0011;
+        public const int WM_ENDSESSION = 0x0016;
 
         // ---- Low-level mouse hook (scroll over tray icon adjusts intensity) ----
 
