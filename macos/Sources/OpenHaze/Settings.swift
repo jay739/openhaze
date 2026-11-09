@@ -28,7 +28,7 @@ final class Settings: ObservableObject {
     @Published var enabled: Bool {
         didSet { d.set(enabled, forKey: "enabled") }
     }
-    /// 0...1 — used for Light appearance, and for both when separateAppearance is off.
+    /// 0...1, used for Light appearance, and for both when separateAppearance is off.
     @Published var intensity: Double {
         didSet { d.set(intensity, forKey: "intensity") }
     }
@@ -59,6 +59,15 @@ final class Settings: ObservableObject {
     }
     @Published var fnReveal: Bool {
         didSet { d.set(fnReveal, forKey: "fnReveal") }
+    }
+    /// Ask GitHub once a day whether a newer release exists.
+    @Published var checkForUpdates: Bool {
+        didSet { d.set(checkForUpdates, forKey: "checkForUpdates") }
+    }
+    /// The newest release the user was already told about, so each one is announced once.
+    var updateNotifiedTag: String {
+        get { d.string(forKey: "updateNotifiedTag") ?? "" }
+        set { d.set(newValue, forKey: "updateNotifiedTag") }
     }
 
     // MARK: derived
@@ -100,6 +109,7 @@ final class Settings: ObservableObject {
             "desktopMode": DesktopMode.reveal.rawValue,
             "displayMode": DisplayMode.independent.rawValue,
             "fnReveal": true,
+            "checkForUpdates": true,
         ])
         enabled = d.bool(forKey: "enabled")
         intensity = d.double(forKey: "intensity")
@@ -112,6 +122,7 @@ final class Settings: ObservableObject {
         desktopMode = DesktopMode(rawValue: d.integer(forKey: "desktopMode")) ?? .reveal
         displayMode = DisplayMode(rawValue: d.integer(forKey: "displayMode")) ?? .independent
         fnReveal = d.bool(forKey: "fnReveal")
+        checkForUpdates = d.bool(forKey: "checkForUpdates")
     }
 }
 

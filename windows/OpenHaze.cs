@@ -59,6 +59,8 @@ namespace OpenHaze
         public uint ToggleMods; public uint ToggleVk;
         public uint IncMods; public uint IncVk;
         public uint DecMods; public uint DecVk;
+        public bool CheckForUpdates;    // ask GitHub once a day whether a newer release exists
+        public string UpdateNotifiedTag; // newest release the user was already told about
 
         public event Action Changed;
         public void NotifyChanged() { Save(); var h = Changed; if (h != null) h(); }
@@ -75,6 +77,8 @@ namespace OpenHaze
             ToggleMods = Native.MOD_CONTROL | Native.MOD_ALT; ToggleVk = (uint)Keys.H;
             IncMods = 0; IncVk = 0;
             DecMods = 0; DecVk = 0;
+            CheckForUpdates = true;
+            UpdateNotifiedTag = "";
         }
 
         private static string PathFor()
@@ -112,6 +116,8 @@ namespace OpenHaze
                             case "IncVk": s.IncVk = (uint)ParseI(v, 0); break;
                             case "DecMods": s.DecMods = (uint)ParseI(v, 0); break;
                             case "DecVk": s.DecVk = (uint)ParseI(v, 0); break;
+                            case "CheckForUpdates": s.CheckForUpdates = v == "1"; break;
+                            case "UpdateNotifiedTag": s.UpdateNotifiedTag = v; break;
                         }
                     }
                 }
@@ -136,6 +142,8 @@ namespace OpenHaze
                     "ToggleMods=" + ToggleMods, "ToggleVk=" + ToggleVk,
                     "IncMods=" + IncMods, "IncVk=" + IncVk,
                     "DecMods=" + DecMods, "DecVk=" + DecVk,
+                    "CheckForUpdates=" + (CheckForUpdates ? "1" : "0"),
+                    "UpdateNotifiedTag=" + UpdateNotifiedTag,
                 };
                 File.WriteAllLines(PathFor(), lines);
             }
@@ -589,6 +597,14 @@ namespace OpenHaze
         private IntPtr mouseHook = IntPtr.Zero;
         private Native.LowLevelMouseProc mouseProc;   // kept referenced for GC
         private readonly SynchronizationContext ui;
+        private ToolStripMenuItem updateItem;
+        private ToolStripSeparator updateSeparator;
+        private readonly FormsTimer updateTimer;
+        private string updatePage;
+        private bool updateCheckRunning;
+
+        private const int FirstUpdateCheckMs = 10 * 1000;
+        private const int UpdateCheckIntervalMs = 24 * 60 * 60 * 1000;
 
         public TrayContext()
         {
@@ -605,6 +621,18 @@ namespace OpenHaze
             tray.Visible = true;
             tray.MouseUp += OnTrayMouseUp;
             tray.DoubleClick += delegate { ToggleEnabled(); };
+            tray.BalloonTipClicked += delegate { OpenUpdatePage(); };
+
+            // Ask GitHub for a newer release shortly after startup, then daily.
+            updateTimer = new FormsTimer();
+            updateTimer.Interval = FirstUpdateCheckMs;
+            updateTimer.Tick += delegate
+            {
+                updateTimer.Interval = UpdateCheckIntervalMs;
+                if (settings.CheckForUpdates && !UpdateChecker.IsDevelopmentBuild(Application.ProductVersion))
+                    CheckForUpdates(false);
+            };
+            updateTimer.Start();
 
             hotkeys = new HotkeyWindow(OnHotkey, ExitThread);
             ReRegisterHotkeys();
@@ -621,6 +649,16 @@ namespace OpenHaze
         private ContextMenuStrip BuildMenu()
         {
             var m = new ContextMenuStrip();
+
+            // Hidden until a check finds a newer release.
+            updateItem = new ToolStripMenuItem();
+            updateItem.Font = new Font(updateItem.Font, FontStyle.Bold);
+            updateItem.Visible = false;
+            updateItem.Click += delegate { OpenUpdatePage(); };
+            m.Items.Add(updateItem);
+            updateSeparator = new ToolStripSeparator();
+            updateSeparator.Visible = false;
+            m.Items.Add(updateSeparator);
 
             toggleItem = new ToolStripMenuItem("Dim background windows");
             toggleItem.Checked = settings.Enabled;
@@ -655,6 +693,10 @@ namespace OpenHaze
             var settingsItem = new ToolStripMenuItem("Settings…");
             settingsItem.Click += delegate { ShowSettings(); };
             m.Items.Add(settingsItem);
+
+            var checkItem = new ToolStripMenuItem("Check for updates…");
+            checkItem.Click += delegate { CheckForUpdates(true); };
+            m.Items.Add(checkItem);
 
             var about = new ToolStripMenuItem("About OpenHaze");
             about.Click += delegate
@@ -721,6 +763,77 @@ namespace OpenHaze
             settingsForm.Activate();
         }
 
+        // ---- updates ----
+
+        private void CheckForUpdates(bool userAsked)
+        {
+            if (updateCheckRunning) return;
+            updateCheckRunning = true;
+            string current = Application.ProductVersion;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                ReleaseInfo latest = null;
+                UpdateCheckException failure = null;
+                try { latest = UpdateChecker.FetchLatest(current); }
+                catch (UpdateCheckException e) { failure = e; }
+                ui.Post(delegate { OnUpdateCheckFinished(current, latest, failure, userAsked); }, null);
+            });
+        }
+
+        private void OnUpdateCheckFinished(string current, ReleaseInfo latest, UpdateCheckException failure,
+                                           bool userAsked)
+        {
+            updateCheckRunning = false;
+            if (failure != null)
+            {
+                // Automatic checks fail quietly; the next one runs tomorrow.
+                if (userAsked)
+                    MessageBox.Show(failure.Message, "OpenHaze", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            bool newer = UpdateChecker.IsNewer(latest.Tag, current);
+            updateItem.Visible = newer;
+            updateSeparator.Visible = newer;
+            if (!newer)
+            {
+                if (userAsked)
+                    MessageBox.Show(string.Format("You're up to date. OpenHaze {0} is the newest version.", current),
+                        "OpenHaze", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            updatePage = latest.PageUrl;
+            updateItem.Text = string.Format("Update available: {0}…", latest.Tag);
+            if (userAsked)
+            {
+                var answer = MessageBox.Show(
+                    string.Format("OpenHaze {0} is available. You have {1}.\n\nOpen the download page?",
+                        latest.Tag, current),
+                    "OpenHaze", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                if (answer == DialogResult.Yes) OpenUpdatePage();
+            }
+            else if (settings.UpdateNotifiedTag != latest.Tag)
+            {
+                // Announce each release once; the menu item stays until the user updates.
+                settings.UpdateNotifiedTag = latest.Tag;
+                settings.Save();
+                tray.ShowBalloonTip(10000, string.Format("OpenHaze {0} is available", latest.Tag),
+                    "Click here, or use the tray menu, to open the download page.", ToolTipIcon.Info);
+            }
+        }
+
+        private void OpenUpdatePage()
+        {
+            string url = updatePage ?? UpdateChecker.ReleasesPage;
+            try { System.Diagnostics.Process.Start(url); }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                MessageBox.Show("Windows couldn't open your web browser. The download page is:\n\n" + url,
+                    "OpenHaze", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
         // ---- hotkeys ----
 
         private void ReRegisterHotkeys()
@@ -784,6 +897,7 @@ namespace OpenHaze
         private void Cleanup()
         {
             if (mouseHook != IntPtr.Zero) { Native.UnhookWindowsHookEx(mouseHook); mouseHook = IntPtr.Zero; }
+            updateTimer.Stop();
             hotkeys.UnregisterAll();
             tray.Visible = false;
             tray.Dispose();

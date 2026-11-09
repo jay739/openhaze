@@ -27,8 +27,9 @@ echo Compiling OpenHaze %OPENHAZE_VERSION%...
 "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ ^
     /win32manifest:app.manifest /win32icon:Support\AppIcon.ico ^
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
+    /r:System.Runtime.Serialization.dll ^
     /out:OpenHaze.exe ^
-    NativeMethods.cs OpenHaze.cs SettingsForm.cs Version.g.cs
+    NativeMethods.cs OpenHaze.cs SettingsForm.cs UpdateChecker.cs Version.g.cs
 
 if errorlevel 1 (
     echo.

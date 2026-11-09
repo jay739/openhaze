@@ -22,6 +22,7 @@ namespace OpenHaze
         private RadioButton desktopReveal, desktopDim;
         private TextBox hotkeyToggle, hotkeyInc, hotkeyDec;
         private CheckBox startupBox;
+        private CheckBox updatesBox;
 
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValue = "OpenHaze";
@@ -191,9 +192,9 @@ namespace OpenHaze
         {
             var g = NewGroup(string.Format("Monitors ({0} connected)", Screen.AllScreens.Length), y, 96);
 
-            monitorsIndependent = NewRadio("Independent focus — highlight the top window on every monitor",
+            monitorsIndependent = NewRadio("Independent focus: highlight the top window on every monitor",
                 14, 24, settings.MonitorMode == 0);
-            monitorsSingle = NewRadio("One focused monitor — fully dim the other monitor(s)",
+            monitorsSingle = NewRadio("One focused monitor: fully dim the other monitor(s)",
                 14, 46, settings.MonitorMode == 1);
             monitorsIndependent.CheckedChanged += delegate
             {
@@ -243,7 +244,7 @@ namespace OpenHaze
 
         private int BuildSystemGroup(int y)
         {
-            var g = NewGroup("System", y, 54);
+            var g = NewGroup("System", y, 80);
 
             startupBox = new CheckBox();
             startupBox.Text = "Start OpenHaze when Windows starts";
@@ -252,6 +253,19 @@ namespace OpenHaze
             startupBox.Checked = IsStartupEnabled();
             startupBox.CheckedChanged += delegate { SetStartup(startupBox.Checked); };
             g.Controls.Add(startupBox);
+
+            // Notify-only: it opens the release page, never downloads anything.
+            updatesBox = new CheckBox();
+            updatesBox.Text = "Check GitHub for a new version once a day";
+            updatesBox.Location = new Point(14, 48);
+            updatesBox.AutoSize = true;
+            updatesBox.Checked = settings.CheckForUpdates;
+            updatesBox.CheckedChanged += delegate
+            {
+                settings.CheckForUpdates = updatesBox.Checked;
+                settings.NotifyChanged();
+            };
+            g.Controls.Add(updatesBox);
 
             return y + g.Height + 8;
         }

@@ -86,4 +86,28 @@ if let screen = NSScreen.screens.first {
     failures += 1
     print("FAIL: overlay-transition checks require a logged-in macOS graphical session")
 }
+
+// Update checker: version comparison and release parsing, without the network.
+expect("a newer patch is an update", UpdateChecker.isNewer("v0.3.1", than: "0.3.0"))
+expect("the same version is not an update", !UpdateChecker.isNewer("v0.3.0", than: "0.3.0"))
+expect("an older release is not an update", !UpdateChecker.isNewer("v0.2.2", than: "0.3.0"))
+expect("numbers compare numerically, not as text", UpdateChecker.isNewer("v0.10.0", than: "0.9.0"))
+expect("a release beats its own prerelease", UpdateChecker.isNewer("v1.0.0", than: "1.0.0-rc.1"))
+expect("a prerelease is older than its release", !UpdateChecker.isNewer("v1.0.0-rc.1", than: "1.0.0"))
+expect("build metadata is ignored", !UpdateChecker.isNewer("v1.0.0+build.5", than: "1.0.0"))
+expect("an unreadable tag is never an update", !UpdateChecker.isNewer("latest", than: "0.3.0"))
+expect("a development build is recognised", UpdateChecker.isDevelopmentBuild("0.0.0"))
+expect("a release build is not a development build", !UpdateChecker.isDevelopmentBuild("0.3.0"))
+func release(_ json: String) -> Result<ReleaseInfo, UpdateCheckError> {
+    UpdateChecker.parseRelease(Data(json.utf8))
+}
+expect("reads the tag and page from GitHub's reply",
+       release(#"{"tag_name":"v0.3.0","html_url":"https://github.com/jay739/openhaze/releases/tag/v0.3.0","assets":[]}"#)
+           == .success(ReleaseInfo(tag: "v0.3.0", page: URL(string: "https://github.com/jay739/openhaze/releases/tag/v0.3.0")!)))
+expect("a page outside this repository falls back to the releases page",
+       release(#"{"tag_name":"v0.3.0","html_url":"https://example.com/x"}"#)
+           == .success(ReleaseInfo(tag: "v0.3.0", page: UpdateChecker.releasesPage)))
+expect("malformed JSON is reported as unreadable", release(#"{"tag_name":"#) == .failure(.unreadableResponse))
+expect("a reply without a tag is reported as unreadable", release(#"{"message":"Not Found"}"#) == .failure(.unreadableResponse))
+expect("a tag that is not a version is reported as unreadable", release(#"{"tag_name":"nightly"}"#) == .failure(.unreadableResponse))
 exit(failures == 0 ? 0 : 1)

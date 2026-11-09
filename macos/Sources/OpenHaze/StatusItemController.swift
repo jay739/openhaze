@@ -13,6 +13,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var valueLabel: NSTextField!
     private var scrollMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
+    private var updateItem: NSMenuItem!
+    private var updateSeparator: NSMenuItem!
+    private var updatePage: URL?
+    private var updateTimer: Timer?
+    private var updateCheckRunning = false
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -21,10 +26,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.button?.action = #selector(statusButtonClicked(_:))
         statusItem.button?.target = self
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        statusItem.button?.toolTip = "OpenHaze — click for controls, scroll to adjust intensity, ⌥-click to toggle"
+        statusItem.button?.toolTip = "OpenHaze: click for controls, scroll to adjust intensity, ⌥-click to toggle"
 
         buildMenu()
         updateIcon()
+        scheduleUpdateChecks()
 
         // Scrolling over the menu bar icon adjusts intensity (like HazeOver).
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
@@ -49,6 +55,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func buildMenu() {
         menu.delegate = self
 
+        // Hidden until a check finds a newer release.
+        updateItem = NSMenuItem(title: "", action: #selector(openUpdatePage), keyEquivalent: "")
+        updateItem.target = self
+        updateItem.isHidden = true
+        menu.addItem(updateItem)
+        updateSeparator = .separator()
+        updateSeparator.isHidden = true
+        menu.addItem(updateSeparator)
+
         toggleItem = NSMenuItem(title: "Dim Background Windows", action: #selector(toggleEnabled), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
@@ -60,6 +75,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let prefs = NSMenuItem(title: "Settings…", action: #selector(openPreferences), keyEquivalent: ",")
         prefs.target = self
         menu.addItem(prefs)
+
+        let checkUpdates = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdatesNow), keyEquivalent: "")
+        checkUpdates.target = self
+        menu.addItem(checkUpdates)
 
         let about = NSMenuItem(title: "About OpenHaze", action: #selector(openAbout), keyEquivalent: "")
         about.target = self
@@ -137,6 +156,87 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func openAbout() {
         PreferencesWindowController.shared.show(tab: .about)
+    }
+
+    // MARK: - Updates
+
+    /// Asks GitHub for a newer release shortly after launch, then daily.
+    private func scheduleUpdateChecks() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self else { return }
+            self.automaticUpdateCheck()
+            self.updateTimer = Timer.scheduledTimer(withTimeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
+                self?.automaticUpdateCheck()
+            }
+        }
+    }
+
+    private func automaticUpdateCheck() {
+        guard settings.checkForUpdates,
+              !UpdateChecker.isDevelopmentBuild(UpdateChecker.currentVersion) else { return }
+        checkForUpdates(userAsked: false)
+    }
+
+    @objc private func checkForUpdatesNow() {
+        checkForUpdates(userAsked: true)
+    }
+
+    private func checkForUpdates(userAsked: Bool) {
+        guard !updateCheckRunning else { return }
+        updateCheckRunning = true
+        let current = UpdateChecker.currentVersion
+        UpdateChecker.fetchLatest { [weak self] result in
+            guard let self else { return }
+            self.updateCheckRunning = false
+            switch result {
+            case .failure(let error):
+                // Automatic checks fail quietly; the next one runs tomorrow.
+                if userAsked {
+                    self.showAlert("Couldn't check for updates", error.localizedDescription)
+                }
+            case .success(let latest):
+                let newer = UpdateChecker.isNewer(latest.tag, than: current)
+                self.updateItem.isHidden = !newer
+                self.updateSeparator.isHidden = !newer
+                guard newer else {
+                    if userAsked {
+                        self.showAlert("You're up to date", "OpenHaze \(current) is the newest version.")
+                    }
+                    return
+                }
+                self.updatePage = latest.page
+                self.updateItem.title = "Update Available: \(latest.tag)…"
+                // Automatic checks announce each release once; the menu item stays until the user updates.
+                if userAsked || self.settings.updateNotifiedTag != latest.tag {
+                    self.settings.updateNotifiedTag = latest.tag
+                    self.offerUpdate(latest, current: current)
+                }
+            }
+        }
+    }
+
+    private func offerUpdate(_ latest: ReleaseInfo, current: String) {
+        let alert = NSAlert()
+        alert.messageText = "OpenHaze \(latest.tag) is available"
+        alert.informativeText = "You have \(current). The release page has the new disk image."
+        alert.addButton(withTitle: "Open Download Page")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(latest.page)
+        }
+    }
+
+    @objc private func openUpdatePage() {
+        NSWorkspace.shared.open(updatePage ?? UpdateChecker.releasesPage)
+    }
+
+    private func showAlert(_ title: String, _ message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     // MARK: - Icon
