@@ -1,4 +1,4 @@
-// OpenHaze for Windows — dims background windows so the active one stands out.
+// OpenHaze for Windows: dims background windows so the active one stands out.
 // Personal-use recreation of HazeOver (hazeover.com). C# 5 / .NET Framework 4.8 /
 // WinForms: builds with the csc.exe bundled in every Windows 10/11 install.
 using System;
@@ -13,6 +13,14 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using FormsTimer = System.Windows.Forms.Timer;
+
+// Windows shows the title as the file description, which Task Manager and the
+// installer's "applications using files" list use as the app's name. build.bat
+// generates the version attributes.
+[assembly: AssemblyTitle("OpenHaze")]
+[assembly: AssemblyProduct("OpenHaze")]
+[assembly: AssemblyCompany("Jayakrishna Konda")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 Jayakrishna Konda")]
 
 namespace OpenHaze
 {
@@ -334,7 +342,7 @@ namespace OpenHaze
             // A UAC consent prompt (or the lock screen / Ctrl+Alt+Del screen) has
             // switched to the secure desktop. We can't draw on it, so the closest
             // equivalent to "only that prompt stays lit" is to full-dim everything
-            // on ours, regardless of DesktopMode — previously this read as "desktop
+            // on ours, regardless of DesktopMode. Previously this read as "desktop
             // focused" and suppressed dimming entirely instead.
             if (settings.Enabled && Native.IsSecureDesktopActive())
             {
@@ -392,7 +400,7 @@ namespace OpenHaze
             bool isFgMonitor = fgDevice == device;
             var onThis = candidates.Where(delegate(WinInfo w) { return w.Device == device; }).ToList();
 
-            // A fullscreen window (covering its whole monitor, taskbar included —
+            // A fullscreen window (covering its whole monitor, taskbar included,
             // not just maximized, which stops at the work area) is treated like
             // "focus one monitor" regardless of MonitorMode: a movie or game on
             // one screen should dim the others even in independent-focus mode.
@@ -413,7 +421,7 @@ namespace OpenHaze
         /// True if hwnd's window rect covers screen's full bounds (taskbar
         /// included). A plain maximized window stops at the work area, which
         /// excludes the taskbar, so this only matches genuine fullscreen content
-        /// (borderless or exclusive) — the case the "Known limitations" section
+        /// (borderless or exclusive), the case the "Known limitations" section
         /// of the README used to say never dimmed other monitors at all.
         private static bool IsFullscreenOnMonitor(IntPtr hwnd, Screen screen)
         {
@@ -435,7 +443,7 @@ namespace OpenHaze
         }
 
         /// Snapshot the top-level z-order (top to bottom), filtered to windows a
-        /// user would consider "real" — the same set Alt-Tab roughly shows.
+        /// user would consider "real", roughly the same set Alt-Tab shows.
         private void Snapshot(out List<WinInfo> candidates, out Dictionary<IntPtr, int> zIndex)
         {
             candidates = new List<WinInfo>();
@@ -592,13 +600,13 @@ namespace OpenHaze
             menu = BuildMenu();
             tray = new NotifyIcon();
             tray.Icon = TrayIconRenderer.Make(settings.Enabled);
-            tray.Text = "OpenHaze — double-click to toggle, scroll to adjust";
+            tray.Text = "OpenHaze: double-click to toggle, scroll to adjust";
             tray.ContextMenuStrip = menu;
             tray.Visible = true;
             tray.MouseUp += OnTrayMouseUp;
             tray.DoubleClick += delegate { ToggleEnabled(); };
 
-            hotkeys = new HotkeyWindow(OnHotkey);
+            hotkeys = new HotkeyWindow(OnHotkey, ExitThread);
             ReRegisterHotkeys();
 
             settings.Changed += OnSettingsChanged;
@@ -654,8 +662,8 @@ namespace OpenHaze
                 MessageBox.Show(
                     "OpenHaze for Windows " + Application.ProductVersion + "\n\n" +
                     "Dims background windows so you can focus on the one that matters.\n\n" +
-                    "A personal, open-source recreation of HazeOver (hazeover.com) —\n" +
-                    "if you love the idea, support the original on the Mac.\n\n" +
+                    "A personal, open-source recreation of HazeOver (hazeover.com).\n" +
+                    "If you love the idea, support the original on the Mac.\n\n" +
                     "Tray: double-click toggles, scroll wheel adjusts intensity.",
                     "About OpenHaze", MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
@@ -789,15 +797,20 @@ namespace OpenHaze
         }
     }
 
-    // Message-only window that owns the RegisterHotKey registrations.
+    // Hidden window that owns the RegisterHotKey registrations and answers
+    // Windows' request to close. It must stay a top-level window (not
+    // message-only): logoff and Restart Manager, which the installer uses to
+    // close a running OpenHaze, only ask top-level windows.
     internal class HotkeyWindow : NativeWindow
     {
         private readonly Action<int> onHotkey;
+        private readonly Action onEndSession;
         private readonly List<int> registered = new List<int>();
 
-        public HotkeyWindow(Action<int> onHotkey)
+        public HotkeyWindow(Action<int> onHotkey, Action onEndSession)
         {
             this.onHotkey = onHotkey;
+            this.onEndSession = onEndSession;
             CreateHandle(new CreateParams());
         }
 
@@ -815,6 +828,14 @@ namespace OpenHaze
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == Native.WM_HOTKEY) onHotkey(m.WParam.ToInt32());
+            else if (m.Msg == Native.WM_QUERYENDSESSION) { m.Result = (IntPtr)1; return; }
+            else if (m.Msg == Native.WM_ENDSESSION)
+            {
+                // Exit through the normal cleanup before Windows ends the process.
+                if (m.WParam != IntPtr.Zero) onEndSession();
+                m.Result = IntPtr.Zero;
+                return;
+            }
             base.WndProc(ref m);
         }
     }

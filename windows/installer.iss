@@ -28,7 +28,9 @@ OutputBaseFilename=OpenHaze-{#OPENHAZE_VERSION}-Setup
 WizardStyle=modern
 ; OpenHaze runs continuously as a tray app; close it automatically (via
 ; Restart Manager) rather than failing to overwrite/delete a running .exe.
-CloseApplications=yes
+; OpenHaze exits cleanly when Restart Manager asks; "force" ends it if that
+; ever fails, which loses nothing because settings are saved on every change.
+CloseApplications=force
 RestartApplications=no
 
 [Languages]
@@ -50,3 +52,17 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\OpenHaze.exe"; Description: "Launch OpenHaze"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// A per-user install cannot replace a running OpenHaze.exe, and cannot defer
+// that to a restart either, so "Do not close the applications" could only end
+// in a file-in-use error. When Setup lists a running copy, keep the one choice
+// that works.
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpPreparing) and WizardForm.PreparingNoRadio.Visible then
+  begin
+    WizardForm.PreparingYesRadio.Checked := True;
+    WizardForm.PreparingNoRadio.Visible := False;
+  end;
+end;
