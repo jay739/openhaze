@@ -53,6 +53,11 @@ namespace OpenHaze
         public double Intensity;        // 0..1
         public int FadeMs;              // 0 = instant
         public Color HazeColor;
+        // Dark-mode counterparts of Intensity and HazeColor, for when SeparateAppearance
+        // is on (like the macOS Light/Dark settings).
+        public bool SeparateAppearance;
+        public double IntensityDark;    // 0..1
+        public Color HazeColorDark;
         public int HighlightMode;       // 0 = active window, 1 = all windows of active app
         public int MonitorMode;         // 0 = independent per monitor, 1 = focus one monitor
         public int DesktopMode;         // 0 = reveal when desktop focused, 1 = dim everything
@@ -71,6 +76,9 @@ namespace OpenHaze
             Intensity = 0.35;
             FadeMs = 300;
             HazeColor = Color.Black;
+            SeparateAppearance = false;
+            IntensityDark = 0.45;
+            HazeColorDark = Color.Black;
             HighlightMode = 0;
             MonitorMode = 0;
             DesktopMode = 0;
@@ -107,6 +115,9 @@ namespace OpenHaze
                             case "Intensity": s.Intensity = Clamp01(ParseD(v, 0.35)); break;
                             case "FadeMs": s.FadeMs = Math.Max(0, Math.Min(2000, ParseI(v, 300))); break;
                             case "HazeColor": s.HazeColor = ParseColor(v); break;
+                            case "SeparateAppearance": s.SeparateAppearance = v == "1"; break;
+                            case "IntensityDark": s.IntensityDark = Clamp01(ParseD(v, 0.45)); break;
+                            case "HazeColorDark": s.HazeColorDark = ParseColor(v); break;
                             case "HighlightMode": s.HighlightMode = ParseI(v, 0); break;
                             case "MonitorMode": s.MonitorMode = ParseI(v, 0); break;
                             case "DesktopMode": s.DesktopMode = ParseI(v, 0); break;
@@ -136,6 +147,9 @@ namespace OpenHaze
                     "Intensity=" + Intensity.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     "FadeMs=" + FadeMs,
                     "HazeColor=" + HazeColor.R + "," + HazeColor.G + "," + HazeColor.B,
+                    "SeparateAppearance=" + (SeparateAppearance ? "1" : "0"),
+                    "IntensityDark=" + IntensityDark.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    "HazeColorDark=" + HazeColorDark.R + "," + HazeColorDark.G + "," + HazeColorDark.B,
                     "HighlightMode=" + HighlightMode,
                     "MonitorMode=" + MonitorMode,
                     "DesktopMode=" + DesktopMode,
