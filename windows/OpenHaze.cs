@@ -164,10 +164,47 @@ namespace OpenHaze
             catch { }
         }
 
+        // Runtime only, never saved: whether Windows is in dark mode right now.
+        public bool DarkModeActive;
+
+        // The intensity and color in effect right now: the dark-mode ones while
+        // Windows is in dark mode and SeparateAppearance is on.
+        public bool UsingDarkValues { get { return SeparateAppearance && DarkModeActive; } }
+        public double CurrentIntensity { get { return UsingDarkValues ? IntensityDark : Intensity; } }
+        public Color CurrentColor { get { return UsingDarkValues ? HazeColorDark : HazeColor; } }
+
+        // Adjusts the intensity in effect right now, so the tray slider, hotkeys and
+        // scroll wheel change the dark-mode value while that is the one being used.
         public void SetIntensity(double v)
         {
-            Intensity = Clamp01(v);
+            if (UsingDarkValues) IntensityDark = Clamp01(v);
+            else Intensity = Clamp01(v);
             NotifyChanged();
+        }
+
+        public void SetDarkModeActive(bool dark)
+        {
+            if (dark == DarkModeActive) return;
+            DarkModeActive = dark;
+            var h = Changed;
+            if (h != null) h();   // redraw with the other values; nothing to save
+        }
+
+        // Windows' "default app mode" (Settings > Personalization > Colors). The
+        // value is missing on Windows versions without dark mode, which counts as light.
+        public static bool IsWindowsInDarkMode()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    object value = key == null ? null : key.GetValue("AppsUseLightTheme");
+                    return value is int && (int)value == 0;
+                }
+            }
+            catch (System.Security.SecurityException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
         }
 
         private static double Clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
@@ -342,8 +379,8 @@ namespace OpenHaze
             foreach (var screen in Screen.AllScreens)
             {
                 var state = new MonitorState { Screen = screen };
-                state.A = new OverlayForm(screen.Bounds, settings.HazeColor);
-                state.B = new OverlayForm(screen.Bounds, settings.HazeColor);
+                state.A = new OverlayForm(screen.Bounds, settings.CurrentColor);
+                state.B = new OverlayForm(screen.Bounds, settings.CurrentColor);
                 // Create handles up front (never activated, initially hidden)
                 state.A.Show(); state.A.Unplace();
                 state.B.Show(); state.B.Unplace();
@@ -507,13 +544,13 @@ namespace OpenHaze
 
         private void Apply(Plan plan, MonitorState state, Dictionary<IntPtr, int> zIndex)
         {
-            if (state.A.BackColor != settings.HazeColor)
+            if (state.A.BackColor != settings.CurrentColor)
             {
-                state.A.BackColor = settings.HazeColor;
-                state.B.BackColor = settings.HazeColor;
+                state.A.BackColor = settings.CurrentColor;
+                state.B.BackColor = settings.CurrentColor;
             }
 
-            double intensity = settings.Intensity;
+            double intensity = settings.CurrentIntensity;
 
             if (plan.SameAs(state.Current))
             {
@@ -623,6 +660,7 @@ namespace OpenHaze
         public TrayContext()
         {
             settings = HazeSettings.Load();
+            settings.DarkModeActive = HazeSettings.IsWindowsInDarkMode();
             engine = new HazeEngine(settings);
             // Overlay Forms exist by now, so WinForms has installed its context.
             ui = SynchronizationContext.Current ?? new SynchronizationContext();
@@ -652,6 +690,7 @@ namespace OpenHaze
             ReRegisterHotkeys();
 
             settings.Changed += OnSettingsChanged;
+            SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
             mouseProc = MouseHookProc;
             mouseHook = Native.SetWindowsHookEx(Native.WH_MOUSE_LL, mouseProc,
@@ -688,7 +727,7 @@ namespace OpenHaze
             slider.Minimum = 0; slider.Maximum = 100;
             slider.TickStyle = TickStyle.None;
             slider.Width = 180;
-            slider.Value = (int)Math.Round(settings.Intensity * 100);
+            slider.Value = (int)Math.Round(settings.CurrentIntensity * 100);
             slider.ValueChanged += delegate
             {
                 settings.SetIntensity(slider.Value / 100.0);
@@ -733,7 +772,7 @@ namespace OpenHaze
             m.Opening += delegate
             {
                 toggleItem.Checked = settings.Enabled;
-                int v = (int)Math.Round(settings.Intensity * 100);
+                int v = (int)Math.Round(settings.CurrentIntensity * 100);
                 if (slider.Value != v) slider.Value = v;
                 percentLabel.Text = PercentText();
             };
@@ -742,7 +781,7 @@ namespace OpenHaze
 
         private string PercentText()
         {
-            return string.Format("{0}%", (int)Math.Round(settings.Intensity * 100));
+            return string.Format("{0}%", (int)Math.Round(settings.CurrentIntensity * 100));
         }
 
         private void OnTrayMouseUp(object sender, MouseEventArgs e)
@@ -767,6 +806,13 @@ namespace OpenHaze
         {
             tray.Icon = TrayIconRenderer.Make(settings.Enabled);
             if (percentLabel != null) percentLabel.Text = PercentText();
+        }
+
+        // Switching Windows between light and dark mode arrives as a preference
+        // change. Re-reading the mode is cheap, and only a real flip redraws.
+        private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+        {
+            settings.SetDarkModeActive(HazeSettings.IsWindowsInDarkMode());
         }
 
         private void ShowSettings()
@@ -861,8 +907,8 @@ namespace OpenHaze
         private void OnHotkey(int id)
         {
             if (id == 1) ToggleEnabled();
-            else if (id == 2) settings.SetIntensity(settings.Intensity + 0.10);
-            else if (id == 3) settings.SetIntensity(settings.Intensity - 0.10);
+            else if (id == 2) settings.SetIntensity(settings.CurrentIntensity + 0.10);
+            else if (id == 3) settings.SetIntensity(settings.CurrentIntensity - 0.10);
         }
 
         // ---- scroll over the tray icon adjusts intensity ----
@@ -880,7 +926,7 @@ namespace OpenHaze
                     short delta = (short)((data.mouseData >> 16) & 0xFFFF);
                     double change = (delta / 120.0) * 0.05;   // 5% per notch
                     // Hop to the UI thread; the hook must return fast.
-                    ui.Post(delegate { settings.SetIntensity(settings.Intensity + change); }, null);
+                    ui.Post(delegate { settings.SetIntensity(settings.CurrentIntensity + change); }, null);
                     return (IntPtr)1;   // swallow
                 }
             }
@@ -911,6 +957,7 @@ namespace OpenHaze
         private void Cleanup()
         {
             if (mouseHook != IntPtr.Zero) { Native.UnhookWindowsHookEx(mouseHook); mouseHook = IntPtr.Zero; }
+            SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             updateTimer.Stop();
             hotkeys.UnregisterAll();
             tray.Visible = false;
