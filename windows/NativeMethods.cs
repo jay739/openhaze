@@ -89,6 +89,21 @@ namespace OpenHaze
             return false;
         }
 
+        // Dark title bars. Windows 10 version 2004 and later (and Windows 11)
+        // take attribute 20; earlier Windows 10 builds used 19 for the same thing.
+        // Windows 7 and 8 reject both, which leaves the title bar as it was.
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+        public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        public const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_2004 = 19;
+
+        public static void SetDarkTitleBar(IntPtr hwnd, bool dark)
+        {
+            int value = dark ? 1 : 0;
+            if (DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, 4) != 0)
+                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_2004, ref value, 4);
+        }
+
         public static string ClassNameOf(IntPtr hwnd)
         {
             var sb = new StringBuilder(256);

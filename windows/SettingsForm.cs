@@ -26,10 +26,23 @@ namespace OpenHaze
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValue = "OpenHaze";
 
+        // Colors for when Windows is in dark mode, close to Windows 11's own
+        // dark windows.
+        private static readonly Color DarkBack = Color.FromArgb(32, 32, 32);
+        private static readonly Color DarkField = Color.FromArgb(45, 45, 45);
+        private static readonly Color DarkFieldHover = Color.FromArgb(60, 60, 60);
+        private static readonly Color DarkBorder = Color.FromArgb(90, 90, 90);
+        private static readonly Color DarkText = Color.White;
+        private static readonly Color DarkHintText = Color.FromArgb(160, 160, 160);
+        private static readonly Color DarkDisabledText = Color.FromArgb(110, 110, 110);
+
+        private readonly bool darkTheme;   // Windows was in dark mode when this opened
+
         public SettingsForm(HazeSettings settings, Action onHotkeysChanged)
         {
             this.settings = settings;
             this.onHotkeysChanged = onHotkeysChanged;
+            darkTheme = settings.DarkModeActive;
 
             Text = "OpenHaze Settings";
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -57,6 +70,65 @@ namespace OpenHaze
             AcceptButton = close;
 
             ClientSize = new Size(470, y + 44);
+
+            if (darkTheme)
+            {
+                BackColor = DarkBack;
+                ForeColor = DarkText;
+                UseDarkColors(Controls);
+            }
+            // After the colors, because in dark mode greying out sets a color too.
+            SetEnabled(darkRows, settings.SeparateAppearance);
+        }
+
+        // Windows draws the title bar itself, so it is switched separately, as
+        // soon as the window exists and before it first shows.
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (darkTheme) Native.SetDarkTitleBar(Handle, true);
+        }
+
+        // WinForms has no dark theme of its own, so each control gets its dark
+        // colors here.
+        private static void UseDarkColors(Control.ControlCollection controls)
+        {
+            foreach (Control c in controls)
+            {
+                var button = c as Button;
+                if (button != null)
+                {
+                    // A standard button ignores BackColor and stays light, so
+                    // it is drawn flat instead.
+                    button.FlatStyle = FlatStyle.Flat;
+                    button.BackColor = DarkField;
+                    button.ForeColor = DarkText;
+                    button.FlatAppearance.BorderColor = DarkBorder;
+                    button.FlatAppearance.MouseOverBackColor = DarkFieldHover;
+                    button.FlatAppearance.MouseDownBackColor = DarkBack;
+                }
+                else if (c is TextBox)
+                {
+                    c.BackColor = DarkField;
+                    c.ForeColor = DarkText;
+                    ((TextBox)c).BorderStyle = BorderStyle.FixedSingle;
+                }
+                else if (c is TrackBar)
+                {
+                    c.BackColor = DarkBack;
+                }
+                else if (c is Panel)
+                {
+                    // A color swatch keeps showing its haze color.
+                }
+                else
+                {
+                    // Labels, checkboxes, radio buttons and group boxes. Hints
+                    // stay dimmer than the rest of the text.
+                    c.ForeColor = c.ForeColor == SystemColors.GrayText ? DarkHintText : DarkText;
+                    UseDarkColors(c.Controls);
+                }
+            }
         }
 
         // ---- groups ----
@@ -126,7 +198,6 @@ namespace OpenHaze
             darkRows = new Control[darkIntensity.Length + darkColor.Length];
             darkIntensity.CopyTo(darkRows, 0);
             darkColor.CopyTo(darkRows, darkIntensity.Length);
-            SetEnabled(darkRows, settings.SeparateAppearance);
 
             return y + g.Height + 8;
         }
@@ -194,9 +265,16 @@ namespace OpenHaze
             return new Control[] { label, swatch, pick, reset };
         }
 
-        private static void SetEnabled(Control[] controls, bool enabled)
+        // Greys rows out. In dark mode a label is dimmed by color instead,
+        // because Windows draws disabled label text with a light shadow that
+        // smudges on a dark background.
+        private void SetEnabled(Control[] controls, bool enabled)
         {
-            foreach (var c in controls) c.Enabled = enabled;
+            foreach (var c in controls)
+            {
+                if (darkTheme && c is Label) c.ForeColor = enabled ? DarkText : DarkDisabledText;
+                else c.Enabled = enabled;
+            }
         }
 
         private string FadeText()
