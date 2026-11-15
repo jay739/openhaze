@@ -12,11 +12,10 @@ namespace OpenHaze
         private readonly Action onHotkeysChanged;
 
         private CheckBox enabledBox;
-        private TrackBar intensityBar;
-        private Label intensityValue;
+        private CheckBox separateBox;
+        private Control[] darkRows;     // greyed out until separateBox is on
         private TrackBar fadeBar;
         private Label fadeValue;
-        private Panel colorSwatch;
         private RadioButton highlightWindow, highlightApp;
         private RadioButton monitorsIndependent, monitorsSingle;
         private RadioButton desktopReveal, desktopDim;
@@ -64,7 +63,7 @@ namespace OpenHaze
 
         private int BuildDimmingGroup(int y)
         {
-            var g = NewGroup("Dimming", y, 168);
+            var g = NewGroup("Dimming", y, 266);
 
             enabledBox = new CheckBox();
             enabledBox.Text = "Dim background windows";
@@ -78,27 +77,36 @@ namespace OpenHaze
             };
             g.Controls.Add(enabledBox);
 
-            g.Controls.Add(NewLabel("Intensity", 14, 56));
-            intensityBar = new TrackBar();
-            intensityBar.Minimum = 0; intensityBar.Maximum = 100;
-            intensityBar.TickStyle = TickStyle.None;
-            intensityBar.SetBounds(90, 50, 280, 30);
-            intensityBar.Value = (int)Math.Round(settings.Intensity * 100);
-            intensityBar.ValueChanged += delegate
+            // The "Dark mode" rows apply while Windows is in dark mode, and only
+            // when this is on.
+            separateBox = new CheckBox();
+            separateBox.Text = "Use a different haze intensity and color when Windows is in dark mode";
+            separateBox.Checked = settings.SeparateAppearance;
+            separateBox.Location = new Point(14, 48);
+            separateBox.AutoSize = true;
+            separateBox.CheckedChanged += delegate
             {
-                intensityValue.Text = intensityBar.Value + "%";
-                settings.SetIntensity(intensityBar.Value / 100.0);
+                settings.SeparateAppearance = separateBox.Checked;
+                settings.NotifyChanged();
+                SetEnabled(darkRows, separateBox.Checked);
             };
-            g.Controls.Add(intensityBar);
-            intensityValue = NewLabel(intensityBar.Value + "%", 380, 56);
-            g.Controls.Add(intensityValue);
+            g.Controls.Add(separateBox);
 
-            g.Controls.Add(NewLabel("Fade", 14, 92));
+            // Each slider sets its own stored value. SetIntensity would change
+            // whichever value is in effect right now instead. Slider rows sit
+            // 36 px apart because a TrackBar sizes itself to 45 px whatever
+            // height it is given, so closer rows hide the lower slider's track.
+            AddIntensityRow(g, "Intensity", 74, settings.Intensity,
+                delegate(double v) { settings.Intensity = v; settings.NotifyChanged(); });
+            Control[] darkIntensity = AddIntensityRow(g, "Dark mode", 110, settings.IntensityDark,
+                delegate(double v) { settings.IntensityDark = v; settings.NotifyChanged(); });
+
+            g.Controls.Add(NewLabel("Fade", 14, 152));
             fadeBar = new TrackBar();
             fadeBar.Minimum = 0; fadeBar.Maximum = 1500;
             fadeBar.SmallChange = 50; fadeBar.LargeChange = 150;
             fadeBar.TickStyle = TickStyle.None;
-            fadeBar.SetBounds(90, 86, 280, 30);
+            fadeBar.SetBounds(90, 146, 280, 30);
             fadeBar.Value = Math.Min(1500, settings.FadeMs);
             fadeBar.ValueChanged += delegate
             {
@@ -107,47 +115,88 @@ namespace OpenHaze
                 settings.NotifyChanged();
             };
             g.Controls.Add(fadeBar);
-            fadeValue = NewLabel(FadeText(), 380, 92);
+            fadeValue = NewLabel(FadeText(), 380, 152);
             g.Controls.Add(fadeValue);
 
-            g.Controls.Add(NewLabel("Haze color", 14, 130));
-            colorSwatch = new Panel();
-            colorSwatch.SetBounds(90, 128, 40, 20);
-            colorSwatch.BackColor = settings.HazeColor;
-            colorSwatch.BorderStyle = BorderStyle.FixedSingle;
-            g.Controls.Add(colorSwatch);
+            AddColorRow(g, "Haze color", 194, delegate { return settings.HazeColor; },
+                delegate(Color c) { settings.HazeColor = c; settings.NotifyChanged(); });
+            Control[] darkColor = AddColorRow(g, "Dark mode", 226, delegate { return settings.HazeColorDark; },
+                delegate(Color c) { settings.HazeColorDark = c; settings.NotifyChanged(); });
+
+            darkRows = new Control[darkIntensity.Length + darkColor.Length];
+            darkIntensity.CopyTo(darkRows, 0);
+            darkColor.CopyTo(darkRows, darkIntensity.Length);
+            SetEnabled(darkRows, settings.SeparateAppearance);
+
+            return y + g.Height + 8;
+        }
+
+        // A labelled 0 to 100% slider; apply receives the new value as 0..1.
+        private Control[] AddIntensityRow(GroupBox g, string title, int y, double initial, Action<double> apply)
+        {
+            var label = NewLabel(title, 14, y + 6);
+            var bar = new TrackBar();
+            bar.Minimum = 0; bar.Maximum = 100;
+            bar.TickStyle = TickStyle.None;
+            bar.SetBounds(90, y, 280, 30);
+            bar.Value = (int)Math.Round(initial * 100);
+            var shown = NewLabel(bar.Value + "%", 380, y + 6);
+            bar.ValueChanged += delegate
+            {
+                shown.Text = bar.Value + "%";
+                apply(bar.Value / 100.0);
+            };
+            g.Controls.Add(label);
+            g.Controls.Add(bar);
+            g.Controls.Add(shown);
+            return new Control[] { label, bar, shown };
+        }
+
+        // A labelled color swatch with "Choose…" and "Black" buttons.
+        private Control[] AddColorRow(GroupBox g, string title, int y, Func<Color> get, Action<Color> set)
+        {
+            var label = NewLabel(title, 14, y + 2);
+            var swatch = new Panel();
+            swatch.SetBounds(90, y, 40, 20);
+            swatch.BackColor = get();
+            swatch.BorderStyle = BorderStyle.FixedSingle;
 
             var pick = new Button();
             pick.Text = "Choose…";
-            pick.SetBounds(140, 125, 80, 26);
+            pick.SetBounds(140, y - 3, 80, 26);
             pick.Click += delegate
             {
                 using (var dlg = new ColorDialog())
                 {
-                    dlg.Color = settings.HazeColor;
+                    dlg.Color = get();
                     dlg.FullOpen = true;
                     if (dlg.ShowDialog(this) == DialogResult.OK)
                     {
-                        settings.HazeColor = dlg.Color;
-                        colorSwatch.BackColor = dlg.Color;
-                        settings.NotifyChanged();
+                        set(dlg.Color);
+                        swatch.BackColor = dlg.Color;
                     }
                 }
             };
-            g.Controls.Add(pick);
 
             var reset = new Button();
             reset.Text = "Black";
-            reset.SetBounds(226, 125, 60, 26);
+            reset.SetBounds(226, y - 3, 60, 26);
             reset.Click += delegate
             {
-                settings.HazeColor = Color.Black;
-                colorSwatch.BackColor = Color.Black;
-                settings.NotifyChanged();
+                set(Color.Black);
+                swatch.BackColor = Color.Black;
             };
-            g.Controls.Add(reset);
 
-            return y + g.Height + 8;
+            g.Controls.Add(label);
+            g.Controls.Add(swatch);
+            g.Controls.Add(pick);
+            g.Controls.Add(reset);
+            return new Control[] { label, swatch, pick, reset };
+        }
+
+        private static void SetEnabled(Control[] controls, bool enabled)
+        {
+            foreach (var c in controls) c.Enabled = enabled;
         }
 
         private string FadeText()
