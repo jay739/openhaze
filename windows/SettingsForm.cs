@@ -38,7 +38,9 @@ namespace OpenHaze
 
         private static readonly object HintTag = new object();   // marks grey helper text
 
-        private bool darkTheme;   // the window is drawn dark, following Windows
+        private bool darkTheme;   // the window is drawn dark (settings.UseDarkTheme)
+
+        private const int DarkRowIndent = 20;   // the rows the dark-mode switch controls
 
         public SettingsForm(HazeSettings settings, Action onHotkeysChanged)
         {
@@ -72,8 +74,9 @@ namespace OpenHaze
 
             ClientSize = new Size(470, y + 44);
 
-            // Match Windows now, and again whenever it switches while this is open.
-            ApplyTheme(settings.DarkModeActive);
+            // Light or dark as the Theme setting says, and again whenever that or
+            // (on "Match Windows") Windows' own mode changes while this is open.
+            ApplyTheme(settings.UseDarkTheme);
             settings.Changed += OnSettingsChanged;
         }
 
@@ -92,21 +95,21 @@ namespace OpenHaze
             base.OnFormClosed(e);
         }
 
-        // Changed also fires for every setting saved from this window, so this
-        // acts only when Windows has switched between light and dark.
+        // Changed fires for every setting saved from this window as well as when
+        // Windows switches theme, so this acts only when the look should change.
         private void OnSettingsChanged()
         {
-            if (IsDisposed || settings.DarkModeActive == darkTheme) return;
+            if (IsDisposed || settings.UseDarkTheme == darkTheme) return;
             if (InvokeRequired)
             {
                 BeginInvoke(new Action(OnSettingsChanged));
                 return;
             }
-            ApplyTheme(settings.DarkModeActive);
+            ApplyTheme(settings.UseDarkTheme);
             Invalidate(true);
         }
 
-        // Draws the window light or dark to match Windows.
+        // Draws the window light or dark.
         private void ApplyTheme(bool dark)
         {
             darkTheme = dark;
@@ -187,7 +190,7 @@ namespace OpenHaze
 
         private int BuildDimmingGroup(int y)
         {
-            var g = NewGroup("Dimming", y, 266);
+            var g = NewGroup("Dimming", y, 292);
 
             enabledBox = new CheckBox();
             enabledBox.Text = "Dim background windows";
@@ -201,12 +204,40 @@ namespace OpenHaze
             };
             g.Controls.Add(enabledBox);
 
-            // The "Dark mode" rows apply while Windows is in dark mode, and only
-            // when this is on.
+            // Each slider sets its own stored value. SetIntensity would change
+            // whichever value is in effect right now instead. A TrackBar sizes
+            // itself to 45 px whatever height it is given, so the row under a
+            // slider starts 48 px below its top; any closer and the slider
+            // covers part of that row and takes its clicks.
+            AddIntensityRow(g, "Intensity", 0, 50, settings.Intensity,
+                delegate(double v) { settings.Intensity = v; settings.NotifyChanged(); });
+
+            g.Controls.Add(NewLabel("Fade", 14, 104));
+            fadeBar = new TrackBar();
+            fadeBar.Minimum = 0; fadeBar.Maximum = 1500;
+            fadeBar.SmallChange = 50; fadeBar.LargeChange = 150;
+            fadeBar.TickStyle = TickStyle.None;
+            fadeBar.SetBounds(90, 98, 280, 30);
+            fadeBar.Value = Math.Min(1500, settings.FadeMs);
+            fadeBar.ValueChanged += delegate
+            {
+                fadeValue.Text = FadeText();
+                settings.FadeMs = fadeBar.Value;
+                settings.NotifyChanged();
+            };
+            g.Controls.Add(fadeBar);
+            fadeValue = NewLabel(FadeText(), 380, 104);
+            g.Controls.Add(fadeValue);
+
+            AddColorRow(g, "Haze color", 0, 146, delegate { return settings.HazeColor; },
+                delegate(Color c) { settings.HazeColor = c; settings.NotifyChanged(); });
+
+            // The indented rows under this switch apply while Windows is in dark
+            // mode, and only when it is on.
             separateBox = new CheckBox();
             separateBox.Text = "Use a different haze intensity and color when Windows is in dark mode";
             separateBox.Checked = settings.SeparateAppearance;
-            separateBox.Location = new Point(14, 48);
+            separateBox.Location = new Point(14, 180);
             separateBox.AutoSize = true;
             separateBox.CheckedChanged += delegate
             {
@@ -216,35 +247,9 @@ namespace OpenHaze
             };
             g.Controls.Add(separateBox);
 
-            // Each slider sets its own stored value. SetIntensity would change
-            // whichever value is in effect right now instead. Slider rows sit
-            // 36 px apart because a TrackBar sizes itself to 45 px whatever
-            // height it is given, so closer rows hide the lower slider's track.
-            AddIntensityRow(g, "Intensity", 74, settings.Intensity,
-                delegate(double v) { settings.Intensity = v; settings.NotifyChanged(); });
-            Control[] darkIntensity = AddIntensityRow(g, "Dark mode", 110, settings.IntensityDark,
+            Control[] darkIntensity = AddIntensityRow(g, "Intensity", DarkRowIndent, 204, settings.IntensityDark,
                 delegate(double v) { settings.IntensityDark = v; settings.NotifyChanged(); });
-
-            g.Controls.Add(NewLabel("Fade", 14, 152));
-            fadeBar = new TrackBar();
-            fadeBar.Minimum = 0; fadeBar.Maximum = 1500;
-            fadeBar.SmallChange = 50; fadeBar.LargeChange = 150;
-            fadeBar.TickStyle = TickStyle.None;
-            fadeBar.SetBounds(90, 146, 280, 30);
-            fadeBar.Value = Math.Min(1500, settings.FadeMs);
-            fadeBar.ValueChanged += delegate
-            {
-                fadeValue.Text = FadeText();
-                settings.FadeMs = fadeBar.Value;
-                settings.NotifyChanged();
-            };
-            g.Controls.Add(fadeBar);
-            fadeValue = NewLabel(FadeText(), 380, 152);
-            g.Controls.Add(fadeValue);
-
-            AddColorRow(g, "Haze color", 194, delegate { return settings.HazeColor; },
-                delegate(Color c) { settings.HazeColor = c; settings.NotifyChanged(); });
-            Control[] darkColor = AddColorRow(g, "Dark mode", 226, delegate { return settings.HazeColorDark; },
+            Control[] darkColor = AddColorRow(g, "Haze color", DarkRowIndent, 252, delegate { return settings.HazeColorDark; },
                 delegate(Color c) { settings.HazeColorDark = c; settings.NotifyChanged(); });
 
             darkRows = new Control[darkIntensity.Length + darkColor.Length];
@@ -255,13 +260,14 @@ namespace OpenHaze
         }
 
         // A labelled 0 to 100% slider; apply receives the new value as 0..1.
-        private Control[] AddIntensityRow(GroupBox g, string title, int y, double initial, Action<double> apply)
+        // indent moves the row right while the value column stays aligned.
+        private Control[] AddIntensityRow(GroupBox g, string title, int indent, int y, double initial, Action<double> apply)
         {
-            var label = NewLabel(title, 14, y + 6);
+            var label = NewLabel(title, 14 + indent, y + 6);
             var bar = new TrackBar();
             bar.Minimum = 0; bar.Maximum = 100;
             bar.TickStyle = TickStyle.None;
-            bar.SetBounds(90, y, 280, 30);
+            bar.SetBounds(90 + indent, y, 280 - indent, 30);
             bar.Value = (int)Math.Round(initial * 100);
             var shown = NewLabel(bar.Value + "%", 380, y + 6);
             bar.ValueChanged += delegate
@@ -276,17 +282,17 @@ namespace OpenHaze
         }
 
         // A labelled color swatch with "Choose…" and "Black" buttons.
-        private Control[] AddColorRow(GroupBox g, string title, int y, Func<Color> get, Action<Color> set)
+        private Control[] AddColorRow(GroupBox g, string title, int indent, int y, Func<Color> get, Action<Color> set)
         {
-            var label = NewLabel(title, 14, y + 2);
+            var label = NewLabel(title, 14 + indent, y + 2);
             var swatch = new Panel();
-            swatch.SetBounds(90, y, 40, 20);
+            swatch.SetBounds(90 + indent, y, 40, 20);
             swatch.BackColor = get();
             swatch.BorderStyle = BorderStyle.FixedSingle;
 
             var pick = new Button();
             pick.Text = "Choose…";
-            pick.SetBounds(140, y - 3, 80, 26);
+            pick.SetBounds(140 + indent, y - 3, 80, 26);
             pick.Click += delegate
             {
                 using (var dlg = new ColorDialog())
@@ -303,7 +309,7 @@ namespace OpenHaze
 
             var reset = new Button();
             reset.Text = "Black";
-            reset.SetBounds(226, y - 3, 60, 26);
+            reset.SetBounds(226 + indent, y - 3, 60, 26);
             reset.Click += delegate
             {
                 set(Color.Black);
@@ -425,7 +431,7 @@ namespace OpenHaze
 
         private int BuildSystemGroup(int y)
         {
-            var g = NewGroup("System", y, 80);
+            var g = NewGroup("System", y, 108);
 
             startupBox = new CheckBox();
             startupBox.Text = "Start OpenHaze when Windows starts";
@@ -448,7 +454,24 @@ namespace OpenHaze
             };
             g.Controls.Add(updatesBox);
 
+            // Light or dark for this window only. The haze's dark-mode values
+            // follow Windows whatever this says.
+            g.Controls.Add(NewLabel("Theme", 14, 80));
+            AddThemeChoice(g, "Match Windows", 70, 0);
+            AddThemeChoice(g, "Light", 190, 1);
+            AddThemeChoice(g, "Dark", 260, 2);
+
             return y + g.Height + 8;
+        }
+
+        private void AddThemeChoice(GroupBox g, string text, int x, int mode)
+        {
+            var r = NewRadio(text, x, 78, settings.ThemeMode == mode);
+            r.CheckedChanged += delegate
+            {
+                if (r.Checked) { settings.ThemeMode = mode; settings.NotifyChanged(); }
+            };
+            g.Controls.Add(r);
         }
 
         // ---- helpers ----
