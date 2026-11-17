@@ -36,13 +36,14 @@ namespace OpenHaze
         private static readonly Color DarkHintText = Color.FromArgb(160, 160, 160);
         private static readonly Color DarkDisabledText = Color.FromArgb(110, 110, 110);
 
-        private readonly bool darkTheme;   // Windows was in dark mode when this opened
+        private static readonly object HintTag = new object();   // marks grey helper text
+
+        private bool darkTheme;   // the window is drawn dark, following Windows
 
         public SettingsForm(HazeSettings settings, Action onHotkeysChanged)
         {
             this.settings = settings;
             this.onHotkeysChanged = onHotkeysChanged;
-            darkTheme = settings.DarkModeActive;
 
             Text = "OpenHaze Settings";
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -71,14 +72,9 @@ namespace OpenHaze
 
             ClientSize = new Size(470, y + 44);
 
-            if (darkTheme)
-            {
-                BackColor = DarkBack;
-                ForeColor = DarkText;
-                UseDarkColors(Controls);
-            }
-            // After the colors, because in dark mode greying out sets a color too.
-            SetEnabled(darkRows, settings.SeparateAppearance);
+            // Match Windows now, and again whenever it switches while this is open.
+            ApplyTheme(settings.DarkModeActive);
+            settings.Changed += OnSettingsChanged;
         }
 
         // Windows draws the title bar itself, so it is switched separately, as
@@ -89,33 +85,87 @@ namespace OpenHaze
             if (darkTheme) Native.SetDarkTitleBar(Handle, true);
         }
 
+        // The settings outlive this window, so stop listening to them.
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            settings.Changed -= OnSettingsChanged;
+            base.OnFormClosed(e);
+        }
+
+        // Changed also fires for every setting saved from this window, so this
+        // acts only when Windows has switched between light and dark.
+        private void OnSettingsChanged()
+        {
+            if (IsDisposed || settings.DarkModeActive == darkTheme) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(OnSettingsChanged));
+                return;
+            }
+            ApplyTheme(settings.DarkModeActive);
+            Invalidate(true);
+        }
+
+        // Draws the window light or dark to match Windows.
+        private void ApplyTheme(bool dark)
+        {
+            darkTheme = dark;
+            if (IsHandleCreated) Native.SetDarkTitleBar(Handle, dark);
+            if (dark)
+            {
+                BackColor = DarkBack;
+                ForeColor = DarkText;
+            }
+            else
+            {
+                ResetBackColor();
+                ResetForeColor();
+            }
+            ApplyColors(Controls, dark);
+            // After the colors, because in dark mode greying out sets a color too.
+            SetEnabled(darkRows, settings.SeparateAppearance);
+        }
+
         // WinForms has no dark theme of its own, so each control gets its dark
-        // colors here.
-        private static void UseDarkColors(Control.ControlCollection controls)
+        // colors here, and the normal ones back when Windows turns light again.
+        private static void ApplyColors(Control.ControlCollection controls, bool dark)
         {
             foreach (Control c in controls)
             {
                 var button = c as Button;
+                var box = c as TextBox;
                 if (button != null)
                 {
-                    // A standard button ignores BackColor and stays light, so
-                    // it is drawn flat instead.
-                    button.FlatStyle = FlatStyle.Flat;
-                    button.BackColor = DarkField;
-                    button.ForeColor = DarkText;
-                    button.FlatAppearance.BorderColor = DarkBorder;
-                    button.FlatAppearance.MouseOverBackColor = DarkFieldHover;
-                    button.FlatAppearance.MouseDownBackColor = DarkBack;
+                    // A standard button is drawn by the Windows theme, which
+                    // ignores BackColor, so in dark mode it is drawn flat.
+                    if (dark)
+                    {
+                        button.FlatStyle = FlatStyle.Flat;
+                        button.BackColor = DarkField;
+                        button.ForeColor = DarkText;
+                        button.FlatAppearance.BorderColor = DarkBorder;
+                        button.FlatAppearance.MouseOverBackColor = DarkFieldHover;
+                        button.FlatAppearance.MouseDownBackColor = DarkBack;
+                    }
+                    else
+                    {
+                        button.FlatStyle = FlatStyle.Standard;
+                        button.ResetBackColor();
+                        button.ResetForeColor();
+                        button.UseVisualStyleBackColor = true;   // ResetBackColor clears it
+                    }
                 }
-                else if (c is TextBox)
+                else if (box != null)
                 {
-                    c.BackColor = DarkField;
-                    c.ForeColor = DarkText;
-                    ((TextBox)c).BorderStyle = BorderStyle.FixedSingle;
+                    // The shortcut boxes are read-only, which would turn them grey,
+                    // so their light background is set too.
+                    box.BackColor = dark ? DarkField : SystemColors.Window;
+                    if (dark) box.ForeColor = DarkText; else box.ResetForeColor();
+                    box.BorderStyle = dark ? BorderStyle.FixedSingle : BorderStyle.Fixed3D;
                 }
                 else if (c is TrackBar)
                 {
-                    c.BackColor = DarkBack;
+                    if (dark) c.BackColor = DarkBack; else c.ResetBackColor();
                 }
                 else if (c is Panel)
                 {
@@ -125,8 +175,10 @@ namespace OpenHaze
                 {
                     // Labels, checkboxes, radio buttons and group boxes. Hints
                     // stay dimmer than the rest of the text.
-                    c.ForeColor = c.ForeColor == SystemColors.GrayText ? DarkHintText : DarkText;
-                    UseDarkColors(c.Controls);
+                    if (c.Tag == HintTag) c.ForeColor = dark ? DarkHintText : SystemColors.GrayText;
+                    else if (dark) c.ForeColor = DarkText;
+                    else c.ResetForeColor();
+                    ApplyColors(c.Controls, dark);
                 }
             }
         }
@@ -272,7 +324,11 @@ namespace OpenHaze
         {
             foreach (var c in controls)
             {
-                if (darkTheme && c is Label) c.ForeColor = enabled ? DarkText : DarkDisabledText;
+                if (darkTheme && c is Label)
+                {
+                    c.Enabled = true;   // it may have been disabled while Windows was light
+                    c.ForeColor = enabled ? DarkText : DarkDisabledText;
+                }
                 else c.Enabled = enabled;
             }
         }
@@ -334,8 +390,7 @@ namespace OpenHaze
             g.Controls.Add(monitorsIndependent);
             g.Controls.Add(monitorsSingle);
 
-            var hint = NewLabel("Tip for two monitors: “one focused monitor” makes it instantly obvious which screen you're on.", 14, 70);
-            hint.ForeColor = SystemColors.GrayText;
+            var hint = NewHint("Tip for two monitors: “one focused monitor” makes it instantly obvious which screen you're on.", 14, 70);
             hint.AutoSize = false;
             hint.Size = new Size(430, 18);
             g.Controls.Add(hint);
@@ -362,8 +417,7 @@ namespace OpenHaze
                 delegate(uint mods, uint vk) { settings.DecMods = mods; settings.DecVk = vk; });
             g.Controls.Add(hotkeyDec);
 
-            var hint = NewLabel("Click a box, press keys. Backspace clears.", 300, 58);
-            hint.ForeColor = SystemColors.GrayText;
+            var hint = NewHint("Click a box, press keys. Backspace clears.", 300, 58);
             g.Controls.Add(hint);
 
             return y + g.Height + 8;
@@ -414,6 +468,15 @@ namespace OpenHaze
             l.Text = text;
             l.Location = new Point(x, y);
             l.AutoSize = true;
+            return l;
+        }
+
+        // Grey helper text, tagged so the theme can tell it from other labels.
+        private static Label NewHint(string text, int x, int y)
+        {
+            var l = NewLabel(text, x, y);
+            l.ForeColor = SystemColors.GrayText;
+            l.Tag = HintTag;
             return l;
         }
 

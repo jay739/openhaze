@@ -29,7 +29,9 @@ namespace OpenHaze
         public static readonly IntPtr HWND_TOP = IntPtr.Zero;
         public const uint SWP_NOSIZE = 0x0001;
         public const uint SWP_NOMOVE = 0x0002;
+        public const uint SWP_NOZORDER = 0x0004;
         public const uint SWP_NOACTIVATE = 0x0010;
+        public const uint SWP_FRAMECHANGED = 0x0020;
         public const uint SWP_SHOWWINDOW = 0x0040;
         public const uint SWP_NOOWNERZORDER = 0x0200;
 
@@ -102,6 +104,10 @@ namespace OpenHaze
             int value = dark ? 1 : 0;
             if (DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, 4) != 0)
                 DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_2004, ref value, 4);
+            // Windows 10 repaints an open window's title bar only after a frame
+            // change, so ask for one. It changes nothing else about the window.
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         }
 
         public static string ClassNameOf(IntPtr hwnd)
