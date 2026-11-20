@@ -1,11 +1,11 @@
 # OpenHaze for Windows
 
-Dims background windows so the one you're working in stands out — the Windows
-sibling of the Mac OpenHaze, both personal-use recreations of
+Dims background windows so the one you're working in stands out. It's the
+Windows sibling of the Mac OpenHaze, and both are personal-use recreations of
 [HazeOver](https://hazeover.com). Designed with **dual-monitor setups** in mind.
 
-Single C# / WinForms app, ~1,400 lines, **zero dependencies**: it compiles with
-the `csc.exe` that ships inside every Windows 10/11 install.
+Single C# / WinForms app, about 2,100 lines, **zero dependencies**: it compiles
+with the `csc.exe` that ships inside every Windows 10/11 install.
 
 ## Install
 
@@ -16,14 +16,15 @@ optional "start with Windows", proper entry in Add/Remove Programs) that
 installs per-user, so it never asks for admin rights.
 
 If SmartScreen complains, that's because the binary is unsigned, not
-malicious — "More info → Run anyway".
+malicious: choose "More info", then "Run anyway".
 
 ## Build it yourself
 
-1. Copy this `OpenHaze-Windows` folder to the PC (USB, network share, cloud — anything).
-2. Double-click **`build.bat`**. It compiles `OpenHaze.exe` in a second or two
-   and offers to launch it.
-3. That's it — no permission prompts, no SDK. Look for the amber-window icon in
+1. Get the source: clone the repository, or use **Code → Download ZIP** on
+   GitHub and unzip it.
+2. Open the `windows` folder and double-click **`build.bat`**. It compiles
+   `OpenHaze.exe` in a second or two and offers to launch it.
+3. That's it: no permission prompts, no SDK. Look for the amber-window icon in
    the tray (you may need to drag it out of the tray overflow).
 
 This produces a portable `OpenHaze.exe` you can run from anywhere; it's the
@@ -41,20 +42,41 @@ same zero-dependency path CI uses to build the release installer.
 
 ## The two-monitor modes (Settings → Monitors)
 
-- **Independent focus** — each monitor keeps its own top window bright.
+- **Independent focus:** each monitor keeps its own top window bright.
   Good when you actively work on both screens.
-- **One focused monitor** — the monitor with the active window behaves
+- **One focused monitor:** the monitor with the active window behaves
   normally; the other monitor is dimmed _entirely_. This is the one to try
   first if you lose track of where your focus is: the lit monitor is always
   the one you're on.
 
-A fullscreen window (a game, a video — anything covering its whole monitor,
+A fullscreen window (a game, a video, anything covering its whole monitor,
 taskbar included) dims the other monitors entirely regardless of which mode
 is selected, the same as **One focused monitor** would.
 
-Everything else is in Settings: intensity, fade duration, haze color,
-active-window vs whole-app highlighting, desktop behavior, hotkeys,
-start-with-Windows.
+Everything else is in Settings: intensity, fade duration, haze color and their
+dark-mode versions, active-window vs whole-app highlighting, desktop behavior,
+hotkeys, start-with-Windows, the daily update check, and the window theme.
+
+## Light and dark mode
+
+A dark desktop already looks dimmer, so the haze that suits a light theme is
+usually too strong on a dark one. Under **Settings → Dimming**, tick **Use a
+different haze intensity and color when Windows is in dark mode**, then set the
+**Intensity** and **Haze color** indented under it. OpenHaze switches between
+the two sets as soon as Windows does. While the dark-mode values are in effect,
+the tray slider, the intensity hotkeys and the scroll wheel adjust those.
+
+OpenHaze follows Windows' **app mode** (Settings → Personalization → Colors →
+Choose your mode). If that's set to **Custom**, it's the "default app mode"
+that counts, not the "default Windows mode".
+
+The Settings window follows the same setting, title bar included. To keep it
+light or dark whatever Windows does, pick **Light** or **Dark** next to
+**Theme** under **Settings → System**; **Match Windows** goes back to
+following Windows. Theme changes only how the Settings window looks: the
+haze's dark-mode values always follow Windows. The tray menu stays light, and
+so do the color picker and pop-up messages such as About, which are Windows'
+own dialogs.
 
 ## How it works
 
@@ -76,11 +98,13 @@ and dims everything on the interactive desktop until control returns.
 ## Files
 
 ```
-NativeMethods.cs    Win32 interop (z-order, WinEvent hook, hotkeys, mouse hook)
-OpenHaze.cs         engine (per-monitor planning, crossfade), tray UI, hotkeys
-SettingsForm.cs     settings window
+NativeMethods.cs    Win32 interop (z-order, WinEvent hook, hotkeys, mouse hook, dark title bar)
+OpenHaze.cs         settings, engine (per-monitor planning, crossfade), tray UI, hotkeys
+SettingsForm.cs     settings window, light and dark
+UpdateChecker.cs    asks GitHub for the newest release (notify only, never downloads)
 app.manifest        Per-Monitor-V2 DPI awareness (mixed-DPI dual monitors)
 build.bat           compiles with Windows' built-in csc.exe
+test.bat            compiles and runs tests/UpdateCheckerTests.cs the same way
 installer.iss       Inno Setup script; CI compiles this into the release Setup.exe
 Support/AppIcon.ico app/installer icon (Support/makeicon.py regenerates it)
 ```
@@ -97,7 +121,8 @@ Settings are stored at `%APPDATA%\OpenHaze\settings.txt`.
 - Windows of elevated (admin) apps may resist z-order placement; if dimming
   misbehaves around an admin tool, run OpenHaze as administrator too. This is
   separate from the UAC consent prompt itself, which is handled (see above).
-- No per-light/dark-theme intensity variants (the Mac version has this).
+- The tray menu stays light when Windows is in dark mode; only the Settings
+  window follows it (see [Light and dark mode](#light-and-dark-mode)).
 
 ## Uninstall
 

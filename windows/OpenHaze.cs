@@ -66,6 +66,7 @@ namespace OpenHaze
         public uint DecMods; public uint DecVk;
         public bool CheckForUpdates;    // ask GitHub once a day whether a newer release exists
         public string UpdateNotifiedTag; // newest release the user was already told about
+        public int ThemeMode;           // OpenHaze's own windows: 0 = match Windows, 1 = light, 2 = dark
 
         public event Action Changed;
         public void NotifyChanged() { Save(); var h = Changed; if (h != null) h(); }
@@ -87,6 +88,7 @@ namespace OpenHaze
             DecMods = 0; DecVk = 0;
             CheckForUpdates = true;
             UpdateNotifiedTag = "";
+            ThemeMode = 0;
         }
 
         private static string PathFor()
@@ -129,6 +131,7 @@ namespace OpenHaze
                             case "DecVk": s.DecVk = (uint)ParseI(v, 0); break;
                             case "CheckForUpdates": s.CheckForUpdates = v == "1"; break;
                             case "UpdateNotifiedTag": s.UpdateNotifiedTag = v; break;
+                            case "ThemeMode": s.ThemeMode = Math.Max(0, Math.Min(2, ParseI(v, 0))); break;
                         }
                     }
                 }
@@ -158,6 +161,7 @@ namespace OpenHaze
                     "DecMods=" + DecMods, "DecVk=" + DecVk,
                     "CheckForUpdates=" + (CheckForUpdates ? "1" : "0"),
                     "UpdateNotifiedTag=" + UpdateNotifiedTag,
+                    "ThemeMode=" + ThemeMode,
                 };
                 File.WriteAllLines(PathFor(), lines);
             }
@@ -172,6 +176,11 @@ namespace OpenHaze
         public bool UsingDarkValues { get { return SeparateAppearance && DarkModeActive; } }
         public double CurrentIntensity { get { return UsingDarkValues ? IntensityDark : Intensity; } }
         public Color CurrentColor { get { return UsingDarkValues ? HazeColorDark : HazeColor; } }
+
+        // Whether OpenHaze's own windows are drawn dark: the Theme choice, or
+        // Windows' mode while that is "match Windows". It never affects the haze,
+        // whose dark-mode values follow Windows (a dark desktop needs a lighter haze).
+        public bool UseDarkTheme { get { return ThemeMode == 0 ? DarkModeActive : ThemeMode == 2; } }
 
         // Adjusts the intensity in effect right now, so the tray slider, hotkeys and
         // scroll wheel change the dark-mode value while that is the one being used.

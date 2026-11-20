@@ -16,7 +16,7 @@ Both implementations are small, dependency-free, and native:
 
 |             | macOS                               | Windows                              |
 | ----------- | ----------------------------------- | ------------------------------------ |
-| Code        | Swift + AppKit, ~1,700 lines        | C# + WinForms, ~1,400 lines          |
+| Code        | Swift + AppKit, ~2,100 lines        | C# + WinForms, ~2,100 lines          |
 | Builds with | plain Command Line Tools (`swiftc`) | the `csc.exe` bundled inside Windows |
 | Get started | [`macos/`](macos/)                  | [`windows/`](windows/)               |
 
@@ -29,8 +29,9 @@ Both implementations are small, dependency-free, and native:
 - Menu bar / tray slider, and scroll over the icon to adjust intensity
 - Global hotkeys (toggle, intensity up/down)
 - Custom haze color, desktop-click reveal, launch at login
+- Light and dark mode: an optional second intensity and haze color for when the system is in dark mode, since a dark desktop needs a lighter haze. The settings window follows the system theme, and on Windows it can also stay Light or Dark
 - New-version notice: once a day OpenHaze asks GitHub for the latest release and offers to open its download page. It never downloads or installs anything itself, and you can turn it off in Settings
-- macOS extras: Fn-to-reveal gesture, separate Light/Dark appearance settings, AppleScript + `openhaze://` URL scheme automation
+- macOS extras: Fn-to-reveal gesture, AppleScript + `openhaze://` URL scheme automation
 
 ## Install
 
@@ -48,9 +49,9 @@ cd windows && build.bat
 
 All settings live in the tray/menu-bar UI; nothing needs a config file edit.
 
-| Setting                                                           | Where it is stored                                                                 |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Intensity, haze color, per-monitor mode, hotkeys, launch at login | macOS: standard `defaults` preferences. Windows: `%APPDATA%\OpenHaze\settings.txt` |
+| Setting                                                                                                                          | Where it is stored                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Intensity and haze color (normal and dark mode), per-monitor mode, hotkeys, launch at login, update checks, Windows window theme | macOS: standard `defaults` preferences. Windows: `%APPDATA%\OpenHaze\settings.txt` |
 
 ## How it works
 

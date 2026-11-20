@@ -29,7 +29,9 @@ namespace OpenHaze
         public static readonly IntPtr HWND_TOP = IntPtr.Zero;
         public const uint SWP_NOSIZE = 0x0001;
         public const uint SWP_NOMOVE = 0x0002;
+        public const uint SWP_NOZORDER = 0x0004;
         public const uint SWP_NOACTIVATE = 0x0010;
+        public const uint SWP_FRAMECHANGED = 0x0020;
         public const uint SWP_SHOWWINDOW = 0x0040;
         public const uint SWP_NOOWNERZORDER = 0x0200;
 
@@ -87,6 +89,25 @@ namespace OpenHaze
             if (DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out cloaked, 4) == 0)
                 return cloaked != 0;
             return false;
+        }
+
+        // Dark title bars. Windows 10 version 2004 and later (and Windows 11)
+        // take attribute 20; earlier Windows 10 builds used 19 for the same thing.
+        // Windows 7 and 8 reject both, which leaves the title bar as it was.
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+        public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        public const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_2004 = 19;
+
+        public static void SetDarkTitleBar(IntPtr hwnd, bool dark)
+        {
+            int value = dark ? 1 : 0;
+            if (DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, 4) != 0)
+                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_2004, ref value, 4);
+            // Windows 10 repaints an open window's title bar only after a frame
+            // change, so ask for one. It changes nothing else about the window.
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         }
 
         public static string ClassNameOf(IntPtr hwnd)
