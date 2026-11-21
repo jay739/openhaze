@@ -2,6 +2,15 @@
 
 All notable changes to **OpenHaze** are documented here. This project adheres to [Semantic Versioning](https://semver.org/), and every version has a [GitHub release](https://github.com/jay739/openhaze/releases) with downloads for macOS and Windows. From 0.3.0 on, each release also carries `SHA256SUMS.txt`.
 
+## [0.4.0] - 2026-11-20
+
+OpenHaze for Windows now follows light and dark mode, as the Mac app does.
+
+- **A separate haze for dark mode on Windows.** In Settings, "Use a different haze intensity and color when Windows is in dark mode" turns on a second intensity and color, which take over as soon as Windows switches to dark mode. While they are in effect, the tray slider, the hotkeys and the scroll wheel adjust them.
+- **The Windows Settings window turns dark with Windows**, title bar included, and switches while it is open. A new Theme choice under System (Match Windows, Light, Dark) can keep it light or dark either way. It changes only the window, never the haze.
+- The Dimming settings are easier to read: the dark-mode rows sit indented under their switch, and the sliders no longer overlap the row below, which used to take some of that row's clicks.
+- The Windows README leads with the installer and describes light and dark mode.
+
 ## [0.3.0] - 2026-11-09
 
 OpenHaze now tells you when a new version is out, and upgrading on Windows no longer stops on a running copy.
