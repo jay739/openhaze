@@ -34,14 +34,6 @@ Work on OpenHaze that is understood well enough to start without digging back th
 - **Why:** macOS 27 warns that `hdiutil create`, `attach`, `convert` and `imageinfo` are deprecated in favour of `diskutil image`. If a later macOS or runner image removes them, release packaging breaks on the tag push. Risk: changing the tool changes how the image is written, so a careless switch can quietly lose the Finder layout or the signature check.
 - **Done when:** packaging runs without hdiutil (or dmgbuild gains a `diskutil image` backend and the pin is bumped), and the window layout and `codesign --verify --deep --strict` still pass.
 
-## B-5: Point the Windows README at the installer
-
-- **Status:** open
-- **Size:** XS
-- **Touches:** `windows/README.md`
-- **Why:** it still tells people to copy an `OpenHaze-Windows` folder and double-click `build.bat`, but every release since 0.2.0 ships `OpenHaze-x.y.z-Setup.exe`.
-- **Done when:** the README leads with the installer from the Releases page, keeps `build.bat` as the from-source route, and has no em dashes left (7 today).
-
 ## B-6: Clear the Swift compiler warnings in the settings window
 
 - **Status:** open
@@ -54,6 +46,14 @@ Work on OpenHaze that is understood well enough to start without digging back th
 
 - **Status:** open
 - **Size:** XS
-- **Touches:** `macos/README.md` (6), `macos/Support/makeicon.swift` (2), `macos/Sources/OpenHaze/OnboardingWindow.swift` (2), `macos/Sources/OpenHaze/HazeEngine.swift` (2), `macos/build.sh` (1), plus `windows/README.md` under B-5
+- **Touches:** `macos/README.md` (6), `macos/Support/makeicon.swift` (2), `macos/Sources/OpenHaze/OnboardingWindow.swift` (2), `macos/Sources/OpenHaze/HazeEngine.swift` (2), `macos/build.sh` (1)
 - **Why:** the house style has no em dashes. Each file is cleaned in the same change the next time it is edited for another reason, so this item shrinks on its own.
 - **Done when:** `git grep -P '\x{2014}'` finds nothing.
+
+## B-8: Stop the two Windows Settings hints being cut off
+
+- **Status:** open
+- **Size:** XS
+- **Touches:** `windows/SettingsForm.cs` (the `NewHint` labels in `BuildShortcutsGroup`, "Click a box, press keys. Backspace clears." at x=300, and in `BuildMonitorsGroup`, the two-monitor tip with `AutoSize = false` and a 430 x 18 box)
+- **Why:** both run past the right edge of the window, so the shortcut hint ends at "Bac" and the tip loses its last words. They are the only help text for those settings.
+- **Done when:** both hints read in full at 100% and 150% display scaling, in light and dark, and the window's overlap check still finds no two controls overlapping.
