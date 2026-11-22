@@ -379,7 +379,7 @@ namespace OpenHaze
 
         private int BuildMonitorsGroup(int y)
         {
-            var g = NewGroup(string.Format("Monitors ({0} connected)", Screen.AllScreens.Length), y, 96);
+            var g = NewGroup(string.Format("Monitors ({0} connected)", Screen.AllScreens.Length), y, 116);
 
             monitorsIndependent = NewRadio("Independent focus: highlight the top window on every monitor",
                 14, 24, settings.MonitorMode == 0);
@@ -397,8 +397,11 @@ namespace OpenHaze
             g.Controls.Add(monitorsSingle);
 
             var hint = NewHint("Tip for two monitors: “one focused monitor” makes it instantly obvious which screen you're on.", 14, 70);
+            // Both hints are wider than the window, so each wraps onto two lines
+            // in a fixed box; the box scales with the window, so it still fits
+            // at other display scalings.
             hint.AutoSize = false;
-            hint.Size = new Size(430, 18);
+            hint.Size = new Size(418, 34);
             g.Controls.Add(hint);
 
             return y + g.Height + 8;
@@ -423,7 +426,9 @@ namespace OpenHaze
                 delegate(uint mods, uint vk) { settings.DecMods = mods; settings.DecVk = vk; });
             g.Controls.Add(hotkeyDec);
 
-            var hint = NewHint("Click a box, press keys. Backspace clears.", 300, 58);
+            var hint = NewHint("Click a box, press keys. Backspace clears.", 300, 52);
+            hint.AutoSize = false;
+            hint.Size = new Size(140, 34);
             g.Controls.Add(hint);
 
             return y + g.Height + 8;
