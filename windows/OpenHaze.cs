@@ -67,6 +67,7 @@ namespace OpenHaze
         public bool CheckForUpdates;    // ask GitHub once a day whether a newer release exists
         public string UpdateNotifiedTag; // newest release the user was already told about
         public int ThemeMode;           // OpenHaze's own windows: 0 = match Windows, 1 = light, 2 = dark
+        public bool HoldToReveal;       // holding Right Ctrl on its own fades the haze out (like Fn on the Mac)
 
         public event Action Changed;
         public void NotifyChanged() { Save(); var h = Changed; if (h != null) h(); }
@@ -89,6 +90,7 @@ namespace OpenHaze
             CheckForUpdates = true;
             UpdateNotifiedTag = "";
             ThemeMode = 0;
+            HoldToReveal = true;
         }
 
         private static string PathFor()
@@ -131,6 +133,7 @@ namespace OpenHaze
                             case "DecVk": s.DecVk = (uint)ParseI(v, 0); break;
                             case "CheckForUpdates": s.CheckForUpdates = v == "1"; break;
                             case "UpdateNotifiedTag": s.UpdateNotifiedTag = v; break;
+                            case "HoldToReveal": s.HoldToReveal = v == "1"; break;
                             case "ThemeMode": s.ThemeMode = Math.Max(0, Math.Min(2, ParseI(v, 0))); break;
                         }
                     }
@@ -162,6 +165,7 @@ namespace OpenHaze
                     "CheckForUpdates=" + (CheckForUpdates ? "1" : "0"),
                     "UpdateNotifiedTag=" + UpdateNotifiedTag,
                     "ThemeMode=" + ThemeMode,
+                    "HoldToReveal=" + (HoldToReveal ? "1" : "0"),
                 };
                 File.WriteAllLines(PathFor(), lines);
             }
@@ -336,6 +340,13 @@ namespace OpenHaze
         private readonly List<IntPtr> eventHooks = new List<IntPtr>();
         private uint ownPid;
 
+        // While revealed (the reveal key is held) every monitor shows no haze.
+        // A change of reveal state fades quickly whatever the Fade setting says,
+        // so the haze gets out of the way at once and comes back promptly.
+        private bool revealed;
+        private bool quickFade;
+        private const int QuickFadeMs = 90;
+
         public HazeEngine(HazeSettings settings)
         {
             this.settings = settings;
@@ -372,6 +383,14 @@ namespace OpenHaze
             int idChild, uint thread, uint time)
         {
             if (idObject != 0) return;   // OBJID_WINDOW only
+            Recompute();
+        }
+
+        public void SetRevealed(bool on)
+        {
+            if (on == revealed) return;
+            revealed = on;
+            quickFade = true;
             Recompute();
         }
 
@@ -457,7 +476,7 @@ namespace OpenHaze
 
         private Plan ComputePlan(MonitorState state, IntPtr fg, bool desktopFocused, List<WinInfo> candidates)
         {
-            if (!settings.Enabled) return Plan.Hidden();
+            if (!settings.Enabled || (revealed && settings.HoldToReveal)) return Plan.Hidden();
 
             if (desktopFocused)
                 return settings.DesktopMode == 1 ? Plan.FullDim() : Plan.Hidden();
@@ -609,15 +628,19 @@ namespace OpenHaze
 
         private void StepFades()
         {
-            double step = settings.FadeMs <= 0 ? 1.0 : (double)fadeTimer.Interval / settings.FadeMs;
+            int fadeMs = quickFade ? Math.Min(settings.FadeMs, QuickFadeMs) : settings.FadeMs;
+            double step = fadeMs <= 0 ? 1.0 : (double)fadeTimer.Interval / fadeMs;
+            bool settled = true;
             foreach (var state in monitors)
             {
-                StepForm(state.A, step);
-                StepForm(state.B, step);
+                settled &= StepForm(state.A, step);
+                settled &= StepForm(state.B, step);
             }
+            if (settled) quickFade = false;   // back to the normal Fade speed
         }
 
-        private static void StepForm(OverlayForm f, double step)
+        // Moves one overlay a step toward its target opacity; true once it is there.
+        private static bool StepForm(OverlayForm f, double step)
         {
             double current = f.Opacity;
             double target = f.TargetOpacity;
@@ -625,11 +648,12 @@ namespace OpenHaze
             {
                 if (current != target) f.Opacity = target;
                 if (target == 0 && f.HideWhenFadedOut && f.Placed) f.Unplace();
-                return;
+                return true;
             }
             double next = current < target ? Math.Min(target, current + step) : Math.Max(target, current - step);
             f.Opacity = next;
             if (next == 0 && f.HideWhenFadedOut && f.Placed) f.Unplace();
+            return false;
         }
 
         public void Dispose()
