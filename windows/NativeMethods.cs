@@ -178,6 +178,38 @@ namespace OpenHaze
 
         public const int WH_MOUSE_LL = 14;
         public const int WM_MOUSEWHEEL = 0x020A;
+        public const int WM_LBUTTONDOWN = 0x0201;
+        public const int WM_RBUTTONDOWN = 0x0204;
+        public const int WM_MBUTTONDOWN = 0x0207;
+        public const int WM_XBUTTONDOWN = 0x020B;
+
+        // ---- Low-level keyboard hook (hold Right Ctrl to reveal) ----
+        // It uses the same callback shape as the mouse hook, so SetWindowsHookEx
+        // and LowLevelMouseProc above serve both.
+
+        public const int WH_KEYBOARD_LL = 13;
+        public const int WM_KEYDOWN = 0x0100;
+        public const int WM_KEYUP = 0x0101;
+        public const int WM_SYSKEYDOWN = 0x0104;
+        public const int WM_SYSKEYUP = 0x0105;
+        public const int VK_RCONTROL = 0xA3;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct KBDLLHOOKSTRUCT
+        {
+            public uint vkCode;
+            public uint scanCode;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        // Whether a key is down right now (high bit set). Used to notice a key
+        // released while the hook could not see it, such as over an admin window.
+        [DllImport("user32.dll")]
+        public static extern short GetAsyncKeyState(int vKey);
+
+        public static bool IsKeyDown(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct MSLLHOOKSTRUCT

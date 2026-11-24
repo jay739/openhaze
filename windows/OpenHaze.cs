@@ -329,6 +329,67 @@ namespace OpenHaze
         public int ZIndex;
     }
 
+    // Decides when holding Right Ctrl reveals all windows: only once it has been
+    // held on its own for HoldMs. Any other key or a mouse button during the hold
+    // cancels the reveal until Right Ctrl is released, so shortcuts like Ctrl+C
+    // or Ctrl+click never flash the haze. Only the rules live here; TrayContext
+    // feeds it from its keyboard and mouse hooks and owns the timer.
+    internal class RevealKeyTracker
+    {
+        public const int HoldMs = 250;
+        private readonly Action<bool> setRevealed;
+        private bool down, spoiled, revealed;
+
+        public RevealKeyTracker(Action<bool> setRevealed) { this.setRevealed = setRevealed; }
+
+        public bool Down { get { return down; } }
+        public bool Revealed { get { return revealed; } }
+
+        // True when a new hold starts, so the caller can start timing it.
+        public bool KeyDown(uint vk)
+        {
+            if (vk != (uint)Native.VK_RCONTROL) { OtherInput(); return false; }
+            if (down) return false;   // auto-repeat while held
+            down = true;
+            spoiled = false;
+            return true;
+        }
+
+        public void KeyUp(uint vk)
+        {
+            if (vk == (uint)Native.VK_RCONTROL) Release();
+        }
+
+        // Another key or a mouse button while Right Ctrl is held.
+        public void OtherInput()
+        {
+            if (!down) return;
+            spoiled = true;
+            Set(false);
+        }
+
+        // Right Ctrl has now been held for HoldMs.
+        public void HoldElapsed()
+        {
+            if (down && !spoiled) Set(true);
+        }
+
+        // Right Ctrl is up, whether a key-up arrived or the key was found up.
+        public void Release()
+        {
+            down = false;
+            spoiled = false;
+            Set(false);
+        }
+
+        private void Set(bool on)
+        {
+            if (on == revealed) return;
+            revealed = on;
+            setRevealed(on);
+        }
+    }
+
     internal class HazeEngine : IDisposable
     {
         private readonly HazeSettings settings;
@@ -680,6 +741,11 @@ namespace OpenHaze
         private readonly HotkeyWindow hotkeys;
         private IntPtr mouseHook = IntPtr.Zero;
         private Native.LowLevelMouseProc mouseProc;   // kept referenced for GC
+        private IntPtr keyHook = IntPtr.Zero;
+        private Native.LowLevelMouseProc keyProc;     // kept referenced for GC
+        private RevealKeyTracker reveal;
+        private readonly FormsTimer revealTimer = new FormsTimer();
+        private int holdStarted;                      // Environment.TickCount when Right Ctrl went down
         private readonly SynchronizationContext ui;
         private ToolStripMenuItem updateItem;
         private ToolStripSeparator updateSeparator;
@@ -728,6 +794,12 @@ namespace OpenHaze
             mouseProc = MouseHookProc;
             mouseHook = Native.SetWindowsHookEx(Native.WH_MOUSE_LL, mouseProc,
                 Native.GetModuleHandle(null), 0);
+
+            reveal = new RevealKeyTracker(delegate(bool on) { engine.SetRevealed(on); });
+            revealTimer.Interval = 50;
+            revealTimer.Tick += OnRevealTimer;
+            keyProc = KeyboardHookProc;
+            UpdateKeyHook();
 
             Application.ApplicationExit += delegate { Cleanup(); };
         }
@@ -839,6 +911,7 @@ namespace OpenHaze
         {
             tray.Icon = TrayIconRenderer.Make(settings.Enabled);
             if (percentLabel != null) percentLabel.Text = PercentText();
+            UpdateKeyHook();
         }
 
         // Switching Windows between light and dark mode arrives as a preference
@@ -948,6 +1021,14 @@ namespace OpenHaze
 
         private IntPtr MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
         {
+            // A click or scroll while Right Ctrl is held is Ctrl+click or zoom, not a reveal.
+            int msg = (int)wParam;
+            if (nCode >= 0 && reveal != null && reveal.Down &&
+                (msg == Native.WM_LBUTTONDOWN || msg == Native.WM_RBUTTONDOWN || msg == Native.WM_MBUTTONDOWN ||
+                 msg == Native.WM_XBUTTONDOWN || msg == Native.WM_MOUSEWHEEL))
+            {
+                ui.Post(delegate { reveal.OtherInput(); }, null);
+            }
             if (nCode >= 0 && wParam == (IntPtr)Native.WM_MOUSEWHEEL)
             {
                 var data = (Native.MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.MSLLHOOKSTRUCT));
@@ -964,6 +1045,58 @@ namespace OpenHaze
                 }
             }
             return Native.CallNextHookEx(mouseHook, nCode, wParam, lParam);
+        }
+
+        // ---- hold Right Ctrl to reveal ----
+
+        // The keyboard hook exists only while hold-to-reveal is on.
+        private void UpdateKeyHook()
+        {
+            if (settings.HoldToReveal && keyHook == IntPtr.Zero)
+            {
+                keyHook = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, keyProc, Native.GetModuleHandle(null), 0);
+            }
+            else if (!settings.HoldToReveal && keyHook != IntPtr.Zero)
+            {
+                Native.UnhookWindowsHookEx(keyHook);
+                keyHook = IntPtr.Zero;
+                revealTimer.Stop();
+                reveal.Release();
+            }
+        }
+
+        // Never swallows a key: it only watches, and posts to the UI thread
+        // because a low-level hook has to return quickly.
+        private IntPtr KeyboardHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                int msg = (int)wParam;
+                var data = (Native.KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.KBDLLHOOKSTRUCT));
+                uint vk = data.vkCode;
+                if (msg == Native.WM_KEYDOWN || msg == Native.WM_SYSKEYDOWN)
+                    ui.Post(delegate { if (reveal.KeyDown(vk)) StartHold(); }, null);
+                else if (msg == Native.WM_KEYUP || msg == Native.WM_SYSKEYUP)
+                    ui.Post(delegate { reveal.KeyUp(vk); }, null);
+            }
+            return Native.CallNextHookEx(keyHook, nCode, wParam, lParam);
+        }
+
+        private void StartHold()
+        {
+            holdStarted = Environment.TickCount;
+            revealTimer.Start();
+        }
+
+        // Runs every 50 ms while Right Ctrl is held: reveals once it has been held
+        // for HoldMs, and ends the hold if the key turns out to be up. Windows hides
+        // key presses over an admin window from this hook, so without that check a
+        // missed key-up could leave everything revealed.
+        private void OnRevealTimer(object sender, EventArgs e)
+        {
+            if (!reveal.Down) { revealTimer.Stop(); return; }
+            if (!Native.IsKeyDown(Native.VK_RCONTROL)) { revealTimer.Stop(); reveal.Release(); return; }
+            if (unchecked(Environment.TickCount - holdStarted) >= RevealKeyTracker.HoldMs) reveal.HoldElapsed();
         }
 
         private bool TryGetTrayIconRect(out Native.RECT rect)
@@ -990,6 +1123,8 @@ namespace OpenHaze
         private void Cleanup()
         {
             if (mouseHook != IntPtr.Zero) { Native.UnhookWindowsHookEx(mouseHook); mouseHook = IntPtr.Zero; }
+            if (keyHook != IntPtr.Zero) { Native.UnhookWindowsHookEx(keyHook); keyHook = IntPtr.Zero; }
+            revealTimer.Stop();
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             updateTimer.Stop();
             hotkeys.UnregisterAll();
