@@ -19,6 +19,7 @@ namespace OpenHaze
         private RadioButton highlightWindow, highlightApp;
         private RadioButton monitorsIndependent, monitorsSingle;
         private RadioButton desktopReveal, desktopDim;
+        private CheckBox holdRevealBox;
         private TextBox hotkeyToggle, hotkeyInc, hotkeyDec;
         private CheckBox startupBox;
         private CheckBox updatesBox;
@@ -346,7 +347,7 @@ namespace OpenHaze
 
         private int BuildFocusGroup(int y)
         {
-            var g = NewGroup("Focus", y, 122);
+            var g = NewGroup("Focus", y, 150);
 
             highlightWindow = NewRadio("Highlight the active window", 14, 24, settings.HighlightMode == 0);
             highlightApp = NewRadio("Highlight all windows of the active app", 14, 46, settings.HighlightMode == 1);
@@ -373,6 +374,20 @@ namespace OpenHaze
             };
             g.Controls.Add(desktopReveal);
             g.Controls.Add(desktopDim);
+
+            // The Windows counterpart of the Mac's Fn reveal. Right Ctrl only counts
+            // when held on its own, so Ctrl shortcuts never trigger it.
+            holdRevealBox = new CheckBox();
+            holdRevealBox.Text = "Hold Right Ctrl to temporarily reveal all windows";
+            holdRevealBox.Checked = settings.HoldToReveal;
+            holdRevealBox.Location = new Point(14, 124);
+            holdRevealBox.AutoSize = true;
+            holdRevealBox.CheckedChanged += delegate
+            {
+                settings.HoldToReveal = holdRevealBox.Checked;
+                settings.NotifyChanged();
+            };
+            g.Controls.Add(holdRevealBox);
 
             return y + g.Height + 8;
         }
